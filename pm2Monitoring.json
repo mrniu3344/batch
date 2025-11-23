@@ -1,0 +1,16 @@
+{
+    "apps": [
+        {
+            "name": "prd-monitoring",
+            "script": "monitoring.py",
+            "error_file": "./log/daily/prd_monitoring_error_pm2.log",
+            "out_file": "./log/daily/prd_monitoring_out_pm2.log",
+            "log_date_format": "YYYY-MM-DD HH:mm:ss",
+            "args": [
+                "-m",
+                "dev"
+            ]
+        }
+    ]
+}
+

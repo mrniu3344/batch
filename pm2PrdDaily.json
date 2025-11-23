@@ -1,0 +1,15 @@
+{
+    "apps": [
+        {
+            "name": "prd-midnight_batch",
+            "script": "midnight_batch.py",
+            "error_file": "./log/daily/prd_midnight_batch_error_pm2.log",
+            "out_file": "./log/daily/prd_midnight_batch_out_pm2.log",
+            "log_date_format": "YYYY-MM-DD HH:mm:ss",
+            "args": [
+                "-m",
+                "dev"
+            ]
+        }
+    ]
+}

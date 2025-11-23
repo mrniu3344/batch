@@ -1,0 +1,14 @@
+log/*
+temp/*
+__pycache__/*
+**/__pycache__/*
+**/**/__pycache__
+.DS_Store
+**/.DS_Store
+!/log/.gitkeep
+!/log/error/.gitkeep
+download/*
+!/download/.gitkeep
+**.pyc
+log/ge.log
+pymysql/__pycache__/*
