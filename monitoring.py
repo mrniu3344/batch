@@ -241,7 +241,7 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
             large_withdrawal_rows = fetch_large_withdrawals(conn, last_monitoring, threshold)
             logger.info(f"Found {len(large_withdrawal_rows)} large withdrawal records since last monitoring.")
             
-            large_withdrawal_webhook = "os.getenv("SLACK_LARGE_WITHDRAWAL_WEBHOOK_URL")"
+            large_withdrawal_webhook = os.getenv("SLACK_LARGE_WITHDRAWAL_WEBHOOK_URL")
             large_withdrawal_notifier = NotificationService(logger, slack_webhook_url=large_withdrawal_webhook)
             for row in large_withdrawal_rows:
                 message = format_large_withdrawal_notification(row)
@@ -298,7 +298,7 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
             decrease = pre_wallet_balance - current_usdt_balance
             logger.info(f"Balance decrease: {decrease}")
 
-            alert_webhook = "os.getenv("SLACK_WALLET_ALERT_WEBHOOK_URL")"
+            alert_webhook = os.getenv("SLACK_WALLET_ALERT_WEBHOOK_URL")
             notifier = NotificationService(logger, slack_webhook_url=alert_webhook)
             notifier.send_slack("钱包警察巡逻中")
             
