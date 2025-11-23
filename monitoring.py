@@ -19,7 +19,7 @@ from services.wallet_service import WalletService
 class NotificationService:
     def __init__(self, logger: logging.Logger, slack_webhook_url: Optional[str] = None):
         self.logger = logger
-        self.slack_webhook_url = slack_webhook_url or os.getenv("SLACK_WEBHOOK_URL") or "os.getenv("SLACK_WEBHOOK_URL")"
+        self.slack_webhook_url = slack_webhook_url or os.getenv("SLACK_WEBHOOK_URL")
 
     def send_slack(self, message: str) -> None:
         if not self.slack_webhook_url:
