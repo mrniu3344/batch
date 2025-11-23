@@ -330,11 +330,11 @@ def process_demands(logger, mode, base_date, conn):
 def daily(logger, mode, base_date, conn):
     logger.info(f"daily: {base_date}")
 
-    # check_deposit_details(logger, mode, base_date, conn)
+    check_deposit_details(logger, mode, base_date, conn)
     
-    # borrow(logger, mode, base_date, conn)
+    borrow(logger, mode, base_date, conn)
     
-    # audit(logger, mode, base_date, conn)
+    audit(logger, mode, base_date, conn)
     
     process_demands(logger, mode, base_date, conn)
 
