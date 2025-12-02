@@ -276,7 +276,7 @@ def process_demands(logger, mode, base_date, conn):
                 "balance_after": balance_after,
                 "related_fund_type": None,
                 "related_amount": None,
-                "remark": "demand存款利息",
+                "remark": "活期存款利息",
                 "related_flow_id": None,
                 "counter_side": None
             }
@@ -305,7 +305,7 @@ def process_demands(logger, mode, base_date, conn):
             "balance_after": balance_after,
             "related_fund_type": None,
             "related_amount": None,
-            "remark": "demand存款结束退还",
+            "remark": "活期存款结束退还",
             "related_flow_id": None,
             "counter_side": None
         }
