@@ -14,33 +14,9 @@ import constants
 from models.lp_exception import LPException
 from services.db_service import DBService
 from services.wallet_service import WalletService
-
-
-class NotificationService:
-    def __init__(self, logger: logging.Logger, slack_webhook_url: Optional[str] = None):
-        self.logger = logger
-        self.slack_webhook_url = slack_webhook_url or os.getenv("SLACK_WEBHOOK_URL")
-
-    def send_slack(self, message: str) -> None:
-        if not self.slack_webhook_url:
-            self.logger.warning("Slack notification skipped: missing webhook URL.")
-            return
-
-        headers = {
-            "Content-Type": "application/json",
-        }
-        payload = {"text": message}
-
-        try:
-            response = requests.post(self.slack_webhook_url, headers=headers, json=payload, timeout=10)
-            response.raise_for_status()
-            self.logger.info(f"Sent Slack notification successfully. status={response.status_code}")
-        except requests.exceptions.Timeout:
-            self.logger.error("Slack notification timed out.")
-        except requests.exceptions.HTTPError as exc:
-            self.logger.error(f"Slack notification failed with status {exc.response.status_code}: {exc.response.text}")
-        except Exception as exc:
-            self.logger.error(f"Slack notification encountered an error: {exc}")
+from services.notification_service import NotificationService
+from services.user_service import UserService
+from services.riskService import RiskService
 
 
 def fetch_last_monitoring_timestamp(conn) -> int:
@@ -250,6 +226,9 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
         else:
             logger.warning("Large withdrawal threshold not found in system_configs, skipping large withdrawal monitoring.")
 
+        # 检查存款记录的风险
+        check_deposit_records_risk(logger, conn)
+
         update_last_monitoring(conn, logger)
         conn.commit()
     except LPException as exc:
@@ -263,6 +242,110 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
             conn.rollback()
     finally:
         logger.info("===== monitoring iteration end =====")
+
+
+def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
+    """
+    检查存款记录的风险
+    检索deposit_records表，检查from_address的风险，如果是高风险则更新users表并发送通知
+    """
+    logger.info("===== checking deposit records risk =====")
+    
+    try:
+        # 检索deposit_records表
+        sql = """
+            SELECT id, user_id, tx_id, amount, from_address, to_address
+            FROM deposit_records
+            WHERE status = 'completed' AND reviewed = false
+        """
+        deposit_records = conn.select(sql)
+        
+        if not deposit_records:
+            logger.info("No unreviewed completed deposit records found")
+            return
+        
+        logger.info(f"Found {len(deposit_records)} unreviewed completed deposit records")
+        
+        user_service = UserService(logger)
+        risk_service = RiskService(logger)
+        notification_service = NotificationService(logger, slack_webhook_url='')
+        
+        for record in deposit_records:
+            record_id = record.get("id")
+            user_id = record.get("user_id")
+            from_address = record.get("from_address")
+            
+            if not from_address:
+                logger.warning(f"Deposit record {record_id} has no from_address, skipping")
+                continue
+            
+            try:
+                # 获取用户信息
+                user = user_service.get_user(conn, user_id)
+                if not user:
+                    logger.warning(f"User {user_id} not found for deposit record {record_id}, skipping")
+                    continue
+                
+                # 检查from_address的风险
+                logger.info(f"Checking risk for deposit record {record_id}, from_address: {from_address}")
+                risk_result = risk_service.assess_wallet_risk(from_address)
+                
+                if risk_result:
+                    score = risk_result.get('score', 0)
+                    risk_level = risk_result.get('risk_level', 'Unknown')
+                    hacking_event = risk_result.get('hacking_event', '')
+                    detail_list = risk_result.get('detail_list', [])
+                    risk_detail = risk_result.get('risk_detail', [])
+                    
+                    logger.info(f"Deposit record {record_id} risk assessment - Score: {score}, Risk Level: {risk_level}")
+                    
+                    # 如果风险级别是 High 或 Severe，更新users表并发送通知
+                    if risk_level in ['High', 'Severe']:
+                        # 更新users表的risky_trn字段
+                        user_service.append_risky_trn(conn, user_id, record_id, 0, "monitoring.check_deposit_records_risk")
+                        logger.info(f"Updated risky_trn for user {user_id} with deposit record {record_id}")
+                        
+                        # 发送Slack通知
+                        login_id = user.login_id or f"ID:{user_id}"
+                        message = notification_service.format_deposit_risk_notification(
+                            login_id=login_id,
+                            from_address=from_address,
+                            score=score,
+                            risk_level=risk_level,
+                            hacking_event=hacking_event,
+                            detail_list=detail_list,
+                            risk_detail=risk_detail
+                        )
+                        
+                        notification_service.send_slack(message)
+                        logger.info(f"Sent risk notification for deposit record {record_id}")
+                else:
+                    logger.warning(f"Failed to get risk assessment for deposit record {record_id}")
+                
+                # 标记为已审核（无论是否高风险）
+                conn.update(
+                    "deposit_records",
+                    {"id": record_id},
+                    {"reviewed": True},
+                    0,
+                    "monitoring.check_deposit_records_risk"
+                )
+                logger.info(f"Marked deposit record {record_id} as reviewed")
+                    
+            except LPException as e:
+                e.print()
+                logger.error(f"Error processing deposit record {record_id}: {e.error_function}, {e.error_detail}")
+            except Exception as e:
+                logger.error(f"Unexpected error processing deposit record {record_id}: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        logger.info("===== deposit records risk check completed =====")
+        
+    except Exception as e:
+        logger.error(f"Error in check_deposit_records_risk: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
 
 def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:

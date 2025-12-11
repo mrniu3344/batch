@@ -10,6 +10,7 @@ class User:
         self.email: str = data.get("email") # type: ignore
         self.phone: str = data.get("phone") # type: ignore
         self.invitation: str = data.get("invitation") # type: ignore
+        self.login_id: Optional[str] = data.get("login_id")
         self.point: Decimal = utils.safe_decimal(data.get("point")) or Decimal('0')
         self.balance: Decimal = utils.safe_decimal(data.get("balance")) or Decimal('0')
         self.loan: Decimal = utils.safe_decimal(data.get("loan")) or Decimal('0')
@@ -21,6 +22,9 @@ class User:
         self.wallet: Optional[str] = data.get("wallet")
         self.audited_usdt: Decimal = utils.safe_decimal(data.get("audited_usdt")) or Decimal('0')
         self.audited_trx: Decimal = utils.safe_decimal(data.get("audited_trx")) or Decimal('0')
+        self.score: Optional[int] = data.get("score")
+        self.risk_level: Optional[str] = data.get("risk_level")
+        self.risky_trn: Optional[str] = data.get("risky_trn")
         self.system_admin_id: Optional[int] = data.get("system_admin_id")
         self.children: list[User] = []
 

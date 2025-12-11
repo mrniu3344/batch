@@ -86,6 +86,22 @@ class UserService(SingletonService):
         json_data = {"audited_usdt": audited_usdt, "audited_trx": audited_trx}
         conn.update("users", keys, json_data, user, process)
 
+    def update_risk_info(self, conn: DBConnection, uid: int, score: int, risk_level: str, user: int, process: str):
+        """
+        更新用户的风险评估信息
+        
+        参数:
+            conn: 数据库连接
+            uid: 用户ID
+            score: 风险评分
+            risk_level: 风险等级
+            user: 操作用户ID
+            process: 操作过程标识
+        """
+        keys = {"id": uid}
+        json_data = {"score": score, "risk_level": risk_level}
+        conn.update("users", keys, json_data, user, process)
+
     def update_point(self, conn: DBConnection, uid: int, add_amount: Decimal, user: int, process: str):
         existing_user = self.get_user(conn, uid)
         if existing_user is None:
@@ -113,4 +129,31 @@ class UserService(SingletonService):
         new_demand_balance = (current_demand_balance - subtract_amount).quantize(Decimal('1'), rounding='ROUND_DOWN')
         json_data = {"demand_balance": new_demand_balance}
         
+        conn.update("users", keys, json_data, user, process)
+
+    def append_risky_trn(self, conn: DBConnection, uid: int, deposit_record_id: int, user: int, process: str):
+        """
+        在用户的risky_trn字段后追加deposit_record_id（用逗号分隔）
+        
+        参数:
+            conn: 数据库连接
+            uid: 用户ID
+            deposit_record_id: 存款记录ID
+            user: 操作用户ID
+            process: 操作过程标识
+        """
+        existing_user = self.get_user(conn, uid)
+        if existing_user is None:
+            raise LPException(self.logger, "UserService.append_risky_trn", f"user with id {uid} not found")
+        
+        keys = {"id": uid}
+        current_risky_trn = existing_user.risky_trn or ""
+        
+        # 如果已经有值，用逗号分隔，添加新的id在最后
+        if current_risky_trn:
+            new_risky_trn = f"{current_risky_trn},{deposit_record_id}"
+        else:
+            new_risky_trn = str(deposit_record_id)
+        
+        json_data = {"risky_trn": new_risky_trn}
         conn.update("users", keys, json_data, user, process)

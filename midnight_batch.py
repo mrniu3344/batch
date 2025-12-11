@@ -17,8 +17,9 @@ from services.demand_service import DemandService
 from services.wallet_service import WalletService
 from services.borrowing_service import BorrowingService
 from services.user_fund_flow_service import UserFundFlowService
+from services.riskService import RiskService
+from services.notification_service import NotificationService
 from utils.utils import Utils
-
 
 def monthly(logger, mode, base_date, conn):
     logger.info(f"monthly: {base_date}")
@@ -96,6 +97,8 @@ def audit(logger, mode, base_date, conn):
 
     wallet_service = WalletService(logger)
     user_service = UserService(logger)
+    risk_service = RiskService(logger)
+    notification_service = NotificationService(logger, slack_webhook_url='')
     
     users = user_service.get_audit_users(conn)
     
@@ -117,6 +120,48 @@ def audit(logger, mode, base_date, conn):
                 user_service.update_audited_info(conn, user.id, audited_usdt, audited_trx, 0, "batch.daily_wallet_audit")
             else:
                 logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 审计失败，跳过更新")
+            
+            # 风险评估
+            try:
+                risk_result = risk_service.assess_wallet_risk(user.wallet)
+                if risk_result:
+                    score = risk_result.get('score', 0)
+                    risk_level = risk_result.get('risk_level', 'Unknown')
+                    hacking_event = risk_result.get('hacking_event', '')
+                    detail_list = risk_result.get('detail_list', [])
+                    risk_detail = risk_result.get('risk_detail', [])
+                    
+                    logger.info(f"用户 {user.id} 风险评估结果 - Score: {score}, Risk Level: {risk_level}")
+                    
+                    user_service.update_risk_info(conn, user.id, score, risk_level, 0, "batch.daily_wallet_audit")
+                    
+                    # 如果风险级别是 High 或 Severe，发送 Slack 通知
+                    if risk_level in ['High', 'Severe']:
+                        login_id = user.login_id or f"ID:{user.id}"
+                        message = notification_service.format_risk_notification(
+                            login_id=login_id,
+                            score=score,
+                            risk_level=risk_level,
+                            hacking_event=hacking_event,
+                            detail_list=detail_list,
+                            risk_detail=risk_detail
+                        )
+                        
+                        success = notification_service.send_slack_message(message)
+                        if success:
+                            logger.info(f"用户 {user.id} 的高风险通知已发送到 Slack")
+                        else:
+                            logger.warning(f"用户 {user.id} 的高风险通知发送到 Slack 失败")
+                else:
+                    logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
+            except LPException as e:
+                e.print()
+                logger.error(f"钱包 {user.wallet} 风险评估失败 - 错误函数: {e.error_function}, 错误详情: {e.error_detail}")
+                logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
+            except Exception as e:
+                logger.error(f"钱包 {user.wallet} 风险评估失败: {type(e).__name__}: {str(e)}")
+                logger.error(f"详细错误信息: {traceback.format_exc()}")
+                logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
                 
         except LPException as e:
             # LPException 有详细的错误信息，使用 print() 方法记录
