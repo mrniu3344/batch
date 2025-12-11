@@ -139,6 +139,7 @@ def audit(logger, mode, base_date, conn):
                     if risk_level in ['High', 'Severe']:
                         login_id = user.login_id or f"ID:{user.id}"
                         message = notification_service.format_risk_notification(
+                            user_name=user.name,
                             login_id=login_id,
                             score=score,
                             risk_level=risk_level,

@@ -128,6 +128,7 @@ class NotificationService(SingletonService):
     
     def format_risk_notification(
         self, 
+        user_name: str,
         login_id: str, 
         score: int, 
         risk_level: str, 
@@ -139,6 +140,7 @@ class NotificationService(SingletonService):
         格式化风险评估通知消息
         
         参数:
+            user_name: 用户名称
             login_id: 用户登录ID
             score: 风险评分
             risk_level: 风险级别
@@ -150,7 +152,7 @@ class NotificationService(SingletonService):
             str: 格式化后的消息
         """
         message_lines = [
-            f"用户名（{login_id}）的个人钱包存在风险。",
+            f"{user_name}（{login_id}）的个人钱包存在风险。",
             f"",
             f"风险评分：{score}",
             f"风险级别：{risk_level}",
@@ -163,6 +165,7 @@ class NotificationService(SingletonService):
     
     def format_deposit_risk_notification(
         self,
+        user_name: str,
         login_id: str,
         from_address: str,
         score: int,
@@ -175,6 +178,7 @@ class NotificationService(SingletonService):
         格式化存款风险评估通知消息
         
         参数:
+            user_name: 用户名称
             login_id: 用户登录ID
             from_address: 钱包地址
             score: 风险评分
@@ -187,7 +191,7 @@ class NotificationService(SingletonService):
             str: 格式化后的消息
         """
         message_lines = [
-            f"用户名（{login_id}）存款使用的钱包有风险。",
+            f"{user_name}（{login_id}）存款使用的钱包有风险。",
             f"",
             f"钱包：{from_address}",
             f"分数：{score}",

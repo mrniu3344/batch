@@ -308,6 +308,7 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                         # 发送Slack通知
                         login_id = user.login_id or f"ID:{user_id}"
                         message = notification_service.format_deposit_risk_notification(
+                            user_name=user.name,
                             login_id=login_id,
                             from_address=from_address,
                             score=score,
