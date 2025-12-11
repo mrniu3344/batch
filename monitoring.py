@@ -323,13 +323,10 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                     logger.warning(f"Failed to get risk assessment for deposit record {record_id}")
                 
                 # 标记为已审核（无论是否高风险）
-                conn.update(
-                    "deposit_records",
-                    {"id": record_id},
-                    {"reviewed": True},
-                    0,
-                    "monitoring.check_deposit_records_risk"
-                )
+                sql = "UPDATE deposit_records SET reviewed = true WHERE id = %s"
+                cur = conn.conn.cursor()
+                cur.execute(sql, (record_id,))
+                cur.close()
                 logger.info(f"Marked deposit record {record_id} as reviewed")
                     
             except LPException as e:
