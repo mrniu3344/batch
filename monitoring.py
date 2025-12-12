@@ -59,29 +59,6 @@ def fetch_failed_deposits(conn, last_monitoring: int) -> List[Dict[str, Optional
     return rows
 
 
-def format_notification(row: Dict[str, Optional[str]]) -> str:
-    created_at = row.get("created_at")
-    created_at_dt = pendulum.instance(created_at) if created_at else pendulum.now("UTC")
-    if created_at_dt.tzinfo is None:
-        created_at_dt = created_at_dt.replace(tz="UTC")
-    created_at_tokyo = created_at_dt.in_timezone("Asia/Tokyo")
-    created_at_str = created_at_tokyo.format("YYYY/MM/DD HH:mm:ss")
-
-    amount_raw = row.get("amount") or 0
-    amount_decimal = Decimal(str(amount_raw))
-    amount_formatted = amount_decimal.quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
-
-    name = row.get("name") or ""
-    user_id = row.get("user_id") or ""
-    login_id = row.get("login_id") or ""
-    to_address = row.get("to_address") or ""
-
-    return (
-        f"{name}(ID:{user_id},登录号:{login_id})提现失败。"
-        f"提现时间:{created_at_str}，金额:{amount_formatted}，目标钱包:{to_address}。"
-    )
-
-
 def update_last_monitoring(conn, logger: logging.Logger) -> None:
     now_ms = int(pendulum.now("UTC").timestamp() * 1000)
     conn.update(
@@ -168,29 +145,6 @@ def fetch_large_withdrawals(conn, last_monitoring: int, threshold: Decimal) -> L
     return rows
 
 
-def format_large_withdrawal_notification(row: Dict[str, Optional[str]]) -> str:
-    created_at = row.get("created_at")
-    created_at_dt = pendulum.instance(created_at) if created_at else pendulum.now("UTC")
-    if created_at_dt.tzinfo is None:
-        created_at_dt = created_at_dt.replace(tz="UTC")
-    created_at_tokyo = created_at_dt.in_timezone("Asia/Tokyo")
-    created_at_str = created_at_tokyo.format("YYYY/MM/DD HH:mm:ss")
-
-    amount_raw = row.get("amount") or 0
-    amount_decimal = Decimal(str(amount_raw))
-    amount_formatted = amount_decimal.quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
-
-    name = row.get("name") or ""
-    user_id = row.get("user_id") or ""
-    login_id = row.get("login_id") or ""
-    to_address = row.get("to_address") or ""
-
-    return (
-        f"{name}(ID:{user_id},登录号:{login_id})大额提现。"
-        f"提现时间:{created_at_str}，金额:{amount_formatted}，目标钱包:{to_address}。"
-    )
-
-
 def run_monitoring(logger: logging.Logger, mode: str) -> None:
     logger.info("===== monitoring iteration start =====")
     conn = None
@@ -205,9 +159,9 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
         rows = fetch_failed_deposits(conn, last_monitoring)
         logger.info(f"Found {len(rows)} failed deposit records since last monitoring.")
 
-        notifier = NotificationService(logger)
+        notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
         for row in rows:
-            message = format_notification(row)
+            message = notifier.format_notification(row)
             logger.info(f"Prepared notification: {message}")
             notifier.send_slack(message)
 
@@ -217,10 +171,9 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
             large_withdrawal_rows = fetch_large_withdrawals(conn, last_monitoring, threshold)
             logger.info(f"Found {len(large_withdrawal_rows)} large withdrawal records since last monitoring.")
             
-            large_withdrawal_webhook = os.getenv("SLACK_LARGE_WITHDRAWAL_WEBHOOK_URL")
-            large_withdrawal_notifier = NotificationService(logger, slack_webhook_url=large_withdrawal_webhook)
+            large_withdrawal_notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
             for row in large_withdrawal_rows:
-                message = format_large_withdrawal_notification(row)
+                message = large_withdrawal_notifier.format_large_withdrawal_notification(row)
                 logger.info(f"Prepared large withdrawal notification: {message}")
                 large_withdrawal_notifier.send_slack(message)
         else:
@@ -268,7 +221,7 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
         
         user_service = UserService(logger)
         risk_service = RiskService(logger)
-        notification_service = NotificationService(logger, slack_webhook_url='')
+        notification_service = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
         
         for record in deposit_records:
             record_id = record.get("id")
@@ -359,7 +312,7 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         logger.info(f"Previous wallet balance: {pre_wallet_balance}")
 
         # 2. 使用wallet_service.audit_wallet查询钱包余额
-        wallet_address = "TCQKEmxNJuYoagbDkX4W5UZX9o3y5zocSS"
+        wallet_address = constants.wallet_address
         wallet_service = WalletService(logger)
         balance_info = wallet_service.audit_wallet(wallet_address)
         
@@ -379,8 +332,7 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
             decrease = pre_wallet_balance - current_usdt_balance
             logger.info(f"Balance decrease: {decrease}")
 
-            alert_webhook = os.getenv("SLACK_WALLET_ALERT_WEBHOOK_URL")
-            notifier = NotificationService(logger, slack_webhook_url=alert_webhook)
+            notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["qianbao"])
             notifier.send_slack("钱包警察巡逻中")
             
             d = decrease / Decimal("1000000")
@@ -405,8 +357,7 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
 
         # 5. 监控主钱包的风险
         risk_service = RiskService(logger)
-        alert_webhook = os.getenv("SLACK_WALLET_ALERT_WEBHOOK_URL")
-        notifier = NotificationService(logger, slack_webhook_url=alert_webhook)
+        notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
         
         try:
             logger.info(f"Checking risk for main wallet: {wallet_address}")

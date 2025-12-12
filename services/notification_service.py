@@ -5,99 +5,14 @@ import requests
 import json
 import os
 from typing import Dict, List, Optional
+from decimal import Decimal, ROUND_DOWN
+import pendulum
 
 
 class NotificationService(SingletonService):
     def __init__(self, logger, slack_webhook_url: str = None):
         self.logger = logger
         self.slack_webhook_url = slack_webhook_url
-    
-    def send_slack_message(self, message: str, max_retries: int = 3, initial_delay: float = 1.0) -> bool:
-        """
-        发送 Slack 消息
-        
-        参数:
-            message: 要发送的消息内容
-            max_retries: 最大重试次数（默认3次）
-            initial_delay: 初始延迟秒数（默认1秒）
-        
-        返回:
-            bool: 是否发送成功
-        """
-        if not self.slack_webhook_url:
-            self.logger.error("Slack webhook URL is not set")
-            return False
-        
-        headers = {
-            'Content-Type': 'application/json'
-        }
-        
-        payload = {
-            "text": message
-        }
-        
-        delay = initial_delay
-        last_exception = None
-        
-        for attempt in range(max_retries + 1):
-            try:
-                if attempt > 0:
-                    self.logger.info(f"Retrying Slack message send (attempt {attempt + 1}/{max_retries + 1}) after {delay:.1f}s delay...")
-                    import time
-                    time.sleep(delay)
-                    delay *= 2
-                
-                response = requests.post(
-                    self.slack_webhook_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=10
-                )
-                
-                if response.status_code == 429:
-                    last_exception = requests.exceptions.HTTPError(f"Rate limit (429) on attempt {attempt + 1}")
-                    if attempt < max_retries:
-                        self.logger.warning(f"Rate limit hit (429) on attempt {attempt + 1}/{max_retries + 1}. Will retry...")
-                        continue
-                    else:
-                        self.logger.error(f"Rate limit (429) after {max_retries + 1} attempts")
-                        return False
-                
-                response.raise_for_status()
-                
-                if response.status_code == 200:
-                    self.logger.info("Slack message sent successfully")
-                    return True
-                else:
-                    self.logger.error(f"Slack API returned unexpected status code: {response.status_code}")
-                    return False
-                    
-            except requests.exceptions.Timeout as e:
-                last_exception = e
-                if attempt < max_retries:
-                    self.logger.warning(f"Request timeout on attempt {attempt + 1}/{max_retries + 1}. Will retry...")
-                    continue
-                else:
-                    self.logger.error(f"Request timeout after {max_retries + 1} attempts: {e}")
-                    return False
-            except requests.exceptions.ConnectionError as e:
-                last_exception = e
-                if attempt < max_retries:
-                    self.logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries + 1}. Will retry...")
-                    continue
-                else:
-                    self.logger.error(f"Connection error after {max_retries + 1} attempts: {e}")
-                    return False
-            except requests.exceptions.RequestException as e:
-                self.logger.error(f"Slack API request failed: {e}")
-                return False
-            except Exception as e:
-                self.logger.error(f"Unexpected error while sending Slack message: {e}")
-                return False
-        
-        if last_exception:
-            self.logger.error(f"Failed to send Slack message after {max_retries + 1} attempts: {last_exception}")
-        return False
     
     def send_slack(self, message: str) -> None:
         """
@@ -202,3 +117,65 @@ class NotificationService(SingletonService):
         ]
         
         return "\n".join(message_lines)
+    
+    def format_notification(self, row: Dict[str, Optional[str]]) -> str:
+        """
+        格式化提现失败通知消息
+        
+        参数:
+            row: 包含提现记录信息的字典
+        
+        返回:
+            str: 格式化后的消息
+        """
+        created_at = row.get("created_at")
+        created_at_dt = pendulum.instance(created_at) if created_at else pendulum.now("UTC")
+        if created_at_dt.tzinfo is None:
+            created_at_dt = created_at_dt.replace(tz="UTC")
+        created_at_tokyo = created_at_dt.in_timezone("Asia/Tokyo")
+        created_at_str = created_at_tokyo.format("YYYY/MM/DD HH:mm:ss")
+
+        amount_raw = row.get("amount") or 0
+        amount_decimal = Decimal(str(amount_raw))
+        amount_formatted = amount_decimal.quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
+
+        name = row.get("name") or ""
+        user_id = row.get("user_id") or ""
+        login_id = row.get("login_id") or ""
+        to_address = row.get("to_address") or ""
+
+        return (
+            f"{name}(ID:{user_id},登录号:{login_id})提现失败。"
+            f"提现时间:{created_at_str}，金额:{amount_formatted}，目标钱包:{to_address}。"
+        )
+    
+    def format_large_withdrawal_notification(self, row: Dict[str, Optional[str]]) -> str:
+        """
+        格式化大额提现通知消息
+        
+        参数:
+            row: 包含提现记录信息的字典
+        
+        返回:
+            str: 格式化后的消息
+        """
+        created_at = row.get("created_at")
+        created_at_dt = pendulum.instance(created_at) if created_at else pendulum.now("UTC")
+        if created_at_dt.tzinfo is None:
+            created_at_dt = created_at_dt.replace(tz="UTC")
+        created_at_tokyo = created_at_dt.in_timezone("Asia/Tokyo")
+        created_at_str = created_at_tokyo.format("YYYY/MM/DD HH:mm:ss")
+
+        amount_raw = row.get("amount") or 0
+        amount_decimal = Decimal(str(amount_raw))
+        amount_formatted = amount_decimal.quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
+
+        name = row.get("name") or ""
+        user_id = row.get("user_id") or ""
+        login_id = row.get("login_id") or ""
+        to_address = row.get("to_address") or ""
+
+        return (
+            f"{name}(ID:{user_id},登录号:{login_id})大额提现。"
+            f"提现时间:{created_at_str}，金额:{amount_formatted}，目标钱包:{to_address}。"
+        )

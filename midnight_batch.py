@@ -98,7 +98,7 @@ def audit(logger, mode, base_date, conn):
     wallet_service = WalletService(logger)
     user_service = UserService(logger)
     risk_service = RiskService(logger)
-    notification_service = NotificationService(logger, slack_webhook_url='')
+    notification_service = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
     
     users = user_service.get_audit_users(conn)
     
@@ -148,11 +148,8 @@ def audit(logger, mode, base_date, conn):
                             risk_detail=risk_detail
                         )
                         
-                        success = notification_service.send_slack_message(message)
-                        if success:
-                            logger.info(f"用户 {user.id} 的高风险通知已发送到 Slack")
-                        else:
-                            logger.warning(f"用户 {user.id} 的高风险通知发送到 Slack 失败")
+                        notification_service.send_slack(message)
+                        logger.info(f"用户 {user.id} 的高风险通知已发送到 Slack")
                 else:
                     logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
             except LPException as e:

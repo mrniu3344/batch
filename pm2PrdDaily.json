@@ -8,7 +8,7 @@
             "log_date_format": "YYYY-MM-DD HH:mm:ss",
             "args": [
                 "-m",
-                "dev"
+                "prd"
             ]
         }
     ]

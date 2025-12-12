@@ -10,3 +10,12 @@ env = {
     "production": "prd",
     "production-aws": "prd-aws",
 }
+
+slack_webhook_url = {
+    "tixian": "aaa",
+    "shenpi": "bbb",
+    "qianbao": "ccc",
+    "fengxian": "ddd"
+}
+
+wallet_address = "TCQKEmxNJuYoagbDkX4W5UZX9o3y5zocSS"
