@@ -23,10 +23,9 @@ def main():
     args = parser.parse_args()
     
     wallet_address = args.wallet_address
-    api_key = 'I4UGlwTCSnNsfWYtX2LeF6mbH8KcBOJZ'
     
     try:
-        risk_service = RiskService(logger, api_key=api_key)
+        risk_service = RiskService(logger)
         result = risk_service.assess_wallet_risk(wallet_address)
         
         # 只输出风险值
