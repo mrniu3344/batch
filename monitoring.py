@@ -403,6 +403,32 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         # 4. 将当前余额update进system_configs表
         update_pre_wallet_balance(conn, logger, current_usdt_balance)
 
+        # 5. 监控主钱包的风险
+        main_wallet_address = "TTMjAgEh5oDaCCnTRmohuEerPN2Q3BTrgR"
+        risk_service = RiskService(logger)
+        alert_webhook = os.getenv("SLACK_WALLET_ALERT_WEBHOOK_URL")
+        notifier = NotificationService(logger, slack_webhook_url=alert_webhook)
+        
+        try:
+            logger.info(f"Checking risk for main wallet: {main_wallet_address}")
+            risk_result = risk_service.assess_wallet_risk(main_wallet_address)
+            
+            if risk_result:
+                risk_level = risk_result.get('risk_level', 'Unknown')
+                logger.info(f"Main wallet risk assessment - Risk Level: {risk_level}")
+                
+                # 如果风险级别是 High 或 Severe，发送 Slack 通知
+                if risk_level in ['High', 'Severe']:
+                    notifier.send_slack("注意！主钱包风险过高！")
+                    logger.info("Sent main wallet high risk alert to Slack")
+        except LPException as e:
+            e.print()
+            logger.error(f"Failed to check main wallet risk: {e.error_function}, {e.error_detail}")
+        except Exception as e:
+            logger.error(f"Unexpected error checking main wallet risk: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
         conn.commit()
     except LPException as exc:
         logger.error("LPException occurred during hourly monitoring.")
