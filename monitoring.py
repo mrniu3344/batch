@@ -207,7 +207,7 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
     try:
         # 检索deposit_records表
         sql = """
-            SELECT id, user_id, tx_id, amount, from_address, to_address
+            SELECT id, user_id, tx_id, amount, from_address, to_address, created_at
             FROM deposit_records
             WHERE status = 'completed' AND reviewed = false
         """
@@ -227,6 +227,9 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
             record_id = record.get("id")
             user_id = record.get("user_id")
             from_address = record.get("from_address")
+            tx_id = record.get("tx_id")
+            amount = record.get("amount")
+            created_at = record.get("created_at")
             
             if not from_address:
                 logger.warning(f"Deposit record {record_id} has no from_address, skipping")
@@ -240,41 +243,84 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                     continue
                 
                 # 检查from_address的风险
-                logger.info(f"Checking risk for deposit record {record_id}, from_address: {from_address}")
-                risk_result = risk_service.assess_wallet_risk(from_address)
+                logger.info(f"Checking wallet risk for deposit record {record_id}, from_address: {from_address}")
+                wallet_risk_result = None
+                wallet_score = 0
+                wallet_risk_level = 'Unknown'
+                wallet_hacking_event = ''
+                wallet_detail_list = []
+                wallet_risk_detail = []
                 
-                if risk_result:
-                    score = risk_result.get('score', 0)
-                    risk_level = risk_result.get('risk_level', 'Unknown')
-                    hacking_event = risk_result.get('hacking_event', '')
-                    detail_list = risk_result.get('detail_list', [])
-                    risk_detail = risk_result.get('risk_detail', [])
+                try:
+                    wallet_risk_result = risk_service.assess_wallet_risk(from_address)
+                    if wallet_risk_result:
+                        wallet_score = wallet_risk_result.get('score', 0)
+                        wallet_risk_level = wallet_risk_result.get('risk_level', 'Unknown')
+                        wallet_hacking_event = wallet_risk_result.get('hacking_event', '')
+                        wallet_detail_list = wallet_risk_result.get('detail_list', [])
+                        wallet_risk_detail = wallet_risk_result.get('risk_detail', [])
+                        logger.info(f"Deposit record {record_id} wallet risk assessment - Score: {wallet_score}, Risk Level: {wallet_risk_level}")
+                    else:
+                        logger.warning(f"Failed to get wallet risk assessment for deposit record {record_id}")
+                except Exception as e:
+                    logger.error(f"Error assessing wallet risk for deposit record {record_id}: {e}")
+                
+                # 检查交易的风险（如果存在tx_id）
+                tx_risk_result = None
+                tx_score = None
+                tx_risk_level = None
+                tx_hacking_event = None
+                tx_detail_list = None
+                tx_risk_detail = None
+                
+                if tx_id:
+                    logger.info(f"Checking transaction risk for deposit record {record_id}, tx_id: {tx_id}")
+                    try:
+                        tx_risk_result = risk_service.assess_transaction_risk(tx_id)
+                        if tx_risk_result:
+                            tx_score = tx_risk_result.get('score', 0)
+                            tx_risk_level = tx_risk_result.get('risk_level', 'Unknown')
+                            tx_hacking_event = tx_risk_result.get('hacking_event', '')
+                            tx_detail_list = tx_risk_result.get('detail_list', [])
+                            tx_risk_detail = tx_risk_result.get('risk_detail', [])
+                            logger.info(f"Deposit record {record_id} transaction risk assessment - Score: {tx_score}, Risk Level: {tx_risk_level}")
+                        else:
+                            logger.warning(f"Failed to get transaction risk assessment for deposit record {record_id}")
+                    except Exception as e:
+                        logger.error(f"Error assessing transaction risk for deposit record {record_id}: {e}")
+                
+                # 判断是否需要发送通知
+                has_wallet_risk = wallet_risk_level in ['High', 'Severe']
+                has_tx_risk = tx_risk_level and tx_risk_level in ['High', 'Severe']
+                
+                if has_wallet_risk or has_tx_risk:
+                    # 更新users表的risky_trn字段
+                    user_service.append_risky_trn(conn, user_id, record_id, 0, "monitoring.check_deposit_records_risk")
+                    logger.info(f"Updated risky_trn for user {user_id} with deposit record {record_id}")
                     
-                    logger.info(f"Deposit record {record_id} risk assessment - Score: {score}, Risk Level: {risk_level}")
+                    # 发送Slack通知
+                    login_id = user.login_id or f"ID:{user_id}"
+                    message = notification_service.format_deposit_risk_notification(
+                        user_name=user.name,
+                        login_id=login_id,
+                        from_address=from_address,
+                        score=wallet_score,
+                        risk_level=wallet_risk_level,
+                        hacking_event=wallet_hacking_event,
+                        detail_list=wallet_detail_list,
+                        risk_detail=wallet_risk_detail,
+                        tx_id=tx_id,
+                        tx_score=tx_score,
+                        tx_risk_level=tx_risk_level,
+                        tx_hacking_event=tx_hacking_event,
+                        tx_detail_list=tx_detail_list,
+                        tx_risk_detail=tx_risk_detail,
+                        amount=amount,
+                        created_at=created_at
+                    )
                     
-                    # 如果风险级别是 High 或 Severe，更新users表并发送通知
-                    if risk_level in ['High', 'Severe']:
-                        # 更新users表的risky_trn字段
-                        user_service.append_risky_trn(conn, user_id, record_id, 0, "monitoring.check_deposit_records_risk")
-                        logger.info(f"Updated risky_trn for user {user_id} with deposit record {record_id}")
-                        
-                        # 发送Slack通知
-                        login_id = user.login_id or f"ID:{user_id}"
-                        message = notification_service.format_deposit_risk_notification(
-                            user_name=user.name,
-                            login_id=login_id,
-                            from_address=from_address,
-                            score=score,
-                            risk_level=risk_level,
-                            hacking_event=hacking_event,
-                            detail_list=detail_list,
-                            risk_detail=risk_detail
-                        )
-                        
-                        notification_service.send_slack(message)
-                        logger.info(f"Sent risk notification for deposit record {record_id}")
-                else:
-                    logger.warning(f"Failed to get risk assessment for deposit record {record_id}")
+                    notification_service.send_slack(message)
+                    logger.info(f"Sent risk notification for deposit record {record_id}")
                 
                 # 标记为已审核（无论是否高风险）
                 sql = "UPDATE deposit_records SET reviewed = true WHERE id = %s"
