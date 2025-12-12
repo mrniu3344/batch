@@ -404,14 +404,13 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         update_pre_wallet_balance(conn, logger, current_usdt_balance)
 
         # 5. 监控主钱包的风险
-        main_wallet_address = "TTMjAgEh5oDaCCnTRmohuEerPN2Q3BTrgR"
         risk_service = RiskService(logger)
         alert_webhook = os.getenv("SLACK_WALLET_ALERT_WEBHOOK_URL")
         notifier = NotificationService(logger, slack_webhook_url=alert_webhook)
         
         try:
-            logger.info(f"Checking risk for main wallet: {main_wallet_address}")
-            risk_result = risk_service.assess_wallet_risk(main_wallet_address)
+            logger.info(f"Checking risk for main wallet: {wallet_address}")
+            risk_result = risk_service.assess_wallet_risk(wallet_address)
             
             if risk_result:
                 risk_level = risk_result.get('risk_level', 'Unknown')
