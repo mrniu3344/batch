@@ -1,8 +1,12 @@
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List, Dict, Any
+import json
 from utils.utils import Utils
 
 class User:
+    detail_list: Optional[List[str]]
+    risk_detail: Optional[List[Dict[str, Any]]]
+    
     def __init__(self, data: dict):
         utils = Utils()
         self.id: int = data.get("id") # type: ignore
@@ -24,7 +28,25 @@ class User:
         self.audited_trx: Decimal = utils.safe_decimal(data.get("audited_trx")) or Decimal('0')
         self.score: Optional[int] = data.get("score")
         self.risk_level: Optional[str] = data.get("risk_level")
-        self.risky_trn: Optional[str] = data.get("risky_trn")
+        self.hacking_event: Optional[str] = data.get("hacking_event")
+        # detail_list 和 risk_detail 从数据库中以 JSON 字符串形式存储，需要解析
+        detail_list_str = data.get("detail_list")
+        if detail_list_str:
+            try:
+                self.detail_list = json.loads(detail_list_str) if isinstance(detail_list_str, str) else detail_list_str
+            except (json.JSONDecodeError, TypeError):
+                self.detail_list = None
+        else:
+            self.detail_list = None
+        
+        risk_detail_str = data.get("risk_detail")
+        if risk_detail_str:
+            try:
+                self.risk_detail = json.loads(risk_detail_str) if isinstance(risk_detail_str, str) else risk_detail_str
+            except (json.JSONDecodeError, TypeError):
+                self.risk_detail = None
+        else:
+            self.risk_detail = None
         self.system_admin_id: Optional[int] = data.get("system_admin_id")
         self.children: list[User] = []
 

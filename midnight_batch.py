@@ -133,23 +133,33 @@ def audit(logger, mode, base_date, conn):
                     
                     logger.info(f"用户 {user.id} 风险评估结果 - Score: {score}, Risk Level: {risk_level}")
                     
-                    user_service.update_risk_info(conn, user.id, score, risk_level, 0, "batch.daily_wallet_audit")
+                    user_service.update_risk_info(
+                        conn,
+                        user.id,
+                        score,
+                        risk_level,
+                        0,
+                        "batch.daily_wallet_audit",
+                        hacking_event=hacking_event,
+                        detail_list=detail_list,
+                        risk_detail=risk_detail
+                    )
                     
                     # 如果风险级别是 High 或 Severe，发送 Slack 通知
-                    if risk_level in ['High', 'Severe']:
-                        login_id = user.login_id or f"ID:{user.id}"
-                        message = notification_service.format_risk_notification(
-                            user_name=user.name,
-                            login_id=login_id,
-                            score=score,
-                            risk_level=risk_level,
-                            hacking_event=hacking_event,
-                            detail_list=detail_list,
-                            risk_detail=risk_detail
-                        )
+                    # if risk_level in ['High', 'Severe']:
+                    #     login_id = user.login_id or f"ID:{user.id}"
+                    #     message = notification_service.format_risk_notification(
+                    #         user_name=user.name,
+                    #         login_id=login_id,
+                    #         score=score,
+                    #         risk_level=risk_level,
+                    #         hacking_event=hacking_event,
+                    #         detail_list=detail_list,
+                    #         risk_detail=risk_detail
+                    #     )
                         
-                        notification_service.send_slack(message)
-                        logger.info(f"用户 {user.id} 的高风险通知已发送到 Slack")
+                    #     notification_service.send_slack(message)
+                    #     logger.info(f"用户 {user.id} 的高风险通知已发送到 Slack")
                 else:
                     logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
             except LPException as e:

@@ -86,7 +86,8 @@ class UserService(SingletonService):
         json_data = {"audited_usdt": audited_usdt, "audited_trx": audited_trx}
         conn.update("users", keys, json_data, user, process)
 
-    def update_risk_info(self, conn: DBConnection, uid: int, score: int, risk_level: str, user: int, process: str):
+    def update_risk_info(self, conn: DBConnection, uid: int, score: int, risk_level: str, user: int, process: str, 
+                         hacking_event: str = None, detail_list: list = None, risk_detail: list = None):
         """
         更新用户的风险评估信息
         
@@ -97,9 +98,38 @@ class UserService(SingletonService):
             risk_level: 风险等级
             user: 操作用户ID
             process: 操作过程标识
+            hacking_event: 黑客事件（可选）
+            detail_list: 风险一览列表（可选，将转换为JSON字符串）
+            risk_detail: 风险详细列表（可选，将转换为JSON字符串）
         """
+        import json as json_module
+        
         keys = {"id": uid}
-        json_data = {"score": score, "risk_level": risk_level}
+        json_data = {
+            "score": score, 
+            "risk_level": risk_level,
+            "hacking_event": hacking_event if hacking_event else None
+        }
+        
+        # 处理列表和字典字段，转换为JSON字符串
+        try:
+            if detail_list:
+                json_data["detail_list"] = json_module.dumps(detail_list, ensure_ascii=False)
+            else:
+                json_data["detail_list"] = None
+        except Exception as e:
+            self.logger.warning(f"Failed to serialize detail_list for user {uid}: {e}")
+            json_data["detail_list"] = None
+        
+        try:
+            if risk_detail:
+                json_data["risk_detail"] = json_module.dumps(risk_detail, ensure_ascii=False)
+            else:
+                json_data["risk_detail"] = None
+        except Exception as e:
+            self.logger.warning(f"Failed to serialize risk_detail for user {uid}: {e}")
+            json_data["risk_detail"] = None
+        
         conn.update("users", keys, json_data, user, process)
 
     def update_point(self, conn: DBConnection, uid: int, add_amount: Decimal, user: int, process: str):
@@ -129,31 +159,4 @@ class UserService(SingletonService):
         new_demand_balance = (current_demand_balance - subtract_amount).quantize(Decimal('1'), rounding='ROUND_DOWN')
         json_data = {"demand_balance": new_demand_balance}
         
-        conn.update("users", keys, json_data, user, process)
-
-    def append_risky_trn(self, conn: DBConnection, uid: int, deposit_record_id: int, user: int, process: str):
-        """
-        在用户的risky_trn字段后追加deposit_record_id（用逗号分隔）
-        
-        参数:
-            conn: 数据库连接
-            uid: 用户ID
-            deposit_record_id: 存款记录ID
-            user: 操作用户ID
-            process: 操作过程标识
-        """
-        existing_user = self.get_user(conn, uid)
-        if existing_user is None:
-            raise LPException(self.logger, "UserService.append_risky_trn", f"user with id {uid} not found")
-        
-        keys = {"id": uid}
-        current_risky_trn = existing_user.risky_trn or ""
-        
-        # 如果已经有值，用逗号分隔，添加新的id在最后
-        if current_risky_trn:
-            new_risky_trn = f"{current_risky_trn},{deposit_record_id}"
-        else:
-            new_risky_trn = str(deposit_record_id)
-        
-        json_data = {"risky_trn": new_risky_trn}
         conn.update("users", keys, json_data, user, process)

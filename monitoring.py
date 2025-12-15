@@ -290,45 +290,103 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                         logger.error(f"Error assessing transaction risk for deposit record {record_id}: {e}")
                 
                 # 判断是否需要发送通知
-                has_wallet_risk = wallet_risk_level in ['High', 'Severe']
-                has_tx_risk = tx_risk_level and tx_risk_level in ['High', 'Severe']
+                # has_wallet_risk = wallet_risk_level in ['High', 'Severe']
+                # has_tx_risk = tx_risk_level and tx_risk_level in ['High', 'Severe']
                 
-                if has_wallet_risk or has_tx_risk:
-                    # 更新users表的risky_trn字段
-                    user_service.append_risky_trn(conn, user_id, record_id, 0, "monitoring.check_deposit_records_risk")
-                    logger.info(f"Updated risky_trn for user {user_id} with deposit record {record_id}")
+                # if has_wallet_risk or has_tx_risk:
+                #     # 发送Slack通知
+                #     login_id = user.login_id or f"ID:{user_id}"
+                #     message = notification_service.format_deposit_risk_notification(
+                #         user_name=user.name,
+                #         login_id=login_id,
+                #         from_address=from_address,
+                #         score=wallet_score,
+                #         risk_level=wallet_risk_level,
+                #         hacking_event=wallet_hacking_event,
+                #         detail_list=wallet_detail_list,
+                #         risk_detail=wallet_risk_detail,
+                #         tx_id=tx_id,
+                #         tx_score=tx_score,
+                #         tx_risk_level=tx_risk_level,
+                #         tx_hacking_event=tx_hacking_event,
+                #         tx_detail_list=tx_detail_list,
+                #         tx_risk_detail=tx_risk_detail,
+                #         amount=amount,
+                #         created_at=created_at
+                #     )
                     
-                    # 发送Slack通知
-                    login_id = user.login_id or f"ID:{user_id}"
-                    message = notification_service.format_deposit_risk_notification(
-                        user_name=user.name,
-                        login_id=login_id,
-                        from_address=from_address,
-                        score=wallet_score,
-                        risk_level=wallet_risk_level,
-                        hacking_event=wallet_hacking_event,
-                        detail_list=wallet_detail_list,
-                        risk_detail=wallet_risk_detail,
-                        tx_id=tx_id,
-                        tx_score=tx_score,
-                        tx_risk_level=tx_risk_level,
-                        tx_hacking_event=tx_hacking_event,
-                        tx_detail_list=tx_detail_list,
-                        tx_risk_detail=tx_risk_detail,
-                        amount=amount,
-                        created_at=created_at
-                    )
-                    
-                    notification_service.send_slack(message)
-                    logger.info(f"Sent risk notification for deposit record {record_id}")
+                #     notification_service.send_slack(message)
+                #     logger.info(f"Sent risk notification for deposit record {record_id}")
                 
-                # 标记为已审核（无论是否高风险）
-                sql = "UPDATE deposit_records SET reviewed = true WHERE id = %s"
+                # 更新deposit_records表的风险评估字段和reviewed状态
+                import json as json_module
+                
+                # 准备更新数据
+                # 处理列表和字典字段，转换为JSON字符串
+                wallet_detail_list_json = None
+                try:
+                    if wallet_risk_result and wallet_detail_list:
+                        wallet_detail_list_json = json_module.dumps(wallet_detail_list, ensure_ascii=False)
+                except Exception as e:
+                    logger.warning(f"Failed to serialize wallet detail_list for record {record_id}: {e}")
+                
+                wallet_risk_detail_json = None
+                try:
+                    if wallet_risk_result and wallet_risk_detail:
+                        wallet_risk_detail_json = json_module.dumps(wallet_risk_detail, ensure_ascii=False)
+                except Exception as e:
+                    logger.warning(f"Failed to serialize wallet risk_detail for record {record_id}: {e}")
+                
+                tx_detail_list_json = None
+                try:
+                    if tx_risk_result and tx_detail_list:
+                        tx_detail_list_json = json_module.dumps(tx_detail_list, ensure_ascii=False)
+                except Exception as e:
+                    logger.warning(f"Failed to serialize transaction detail_list for record {record_id}: {e}")
+                
+                tx_risk_detail_json = None
+                try:
+                    if tx_risk_result and tx_risk_detail:
+                        tx_risk_detail_json = json_module.dumps(tx_risk_detail, ensure_ascii=False)
+                except Exception as e:
+                    logger.warning(f"Failed to serialize transaction risk_detail for record {record_id}: {e}")
+                
+                # 使用cur.execute执行UPDATE语句
+                sql = """
+                    UPDATE deposit_records 
+                    SET reviewed = %s,
+                        score = %s,
+                        risk_level = %s,
+                        hacking_event = %s,
+                        detail_list = %s,
+                        risk_detail = %s,
+                        t_score = %s,
+                        t_risk_level = %s,
+                        t_hacking_event = %s,
+                        t_detail_list = %s,
+                        t_risk_detail = %s
+                    WHERE id = %s
+                """
+                params = (
+                    True,  # reviewed
+                    wallet_score if wallet_risk_result else None,  # score
+                    wallet_risk_level if wallet_risk_result and wallet_risk_level != 'Unknown' else None,  # risk_level
+                    wallet_hacking_event if wallet_risk_result and wallet_hacking_event else None,  # hacking_event
+                    wallet_detail_list_json,  # detail_list
+                    wallet_risk_detail_json,  # risk_detail
+                    tx_score if tx_risk_result else None,  # t_score
+                    tx_risk_level if tx_risk_result and tx_risk_level and tx_risk_level != 'Unknown' else None,  # t_risk_level
+                    tx_hacking_event if tx_risk_result and tx_hacking_event else None,  # t_hacking_event
+                    tx_detail_list_json,  # t_detail_list
+                    tx_risk_detail_json,  # t_risk_detail
+                    record_id  # WHERE id
+                )
+                
                 cur = conn.conn.cursor()
-                cur.execute(sql, (record_id,))
+                cur.execute(sql, params)
                 cur.close()
-                logger.info(f"Marked deposit record {record_id} as reviewed")
-                    
+                logger.info(f"Updated deposit record {record_id} with risk assessment data and marked as reviewed")
+                
             except LPException as e:
                 e.print()
                 logger.error(f"Error processing deposit record {record_id}: {e.error_function}, {e.error_detail}")
