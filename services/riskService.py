@@ -629,3 +629,102 @@ class RiskService(SingletonService):
         
         if last_exception:
             raise LPException(self.logger, "RiskService._query_transaction_risk_task", f"Failed to query risk task after {max_retries + 1} attempts: {last_exception}")
+    
+    def analyseRisk(self, score: int, risk_level: str, hacking_event: str, detail_list: list, risk_detail: list) -> tuple:
+        """
+        分析风险等级和风险评分
+        
+        参数:
+            score: 原始风险评分
+            risk_level: 风险等级（Low, Moderate, High, Severe）
+            hacking_event: 相关安全事件名称
+            detail_list: 风险描述列表
+            risk_detail: 详细风险信息列表
+        
+        返回:
+            tuple: (level, score) 其中:
+                - level (str): 风险等级（None, Low, Moderate, High）
+                - score (int): 二进制风险评分（转换为十进制）
+        """
+        # 检查是否为空（处理None、空字符串、空列表等情况）
+        is_hacking_event_empty = not hacking_event or (isinstance(hacking_event, str) and not hacking_event.strip())
+        is_detail_list_empty = not detail_list or (isinstance(detail_list, list) and len(detail_list) == 0)
+        is_risk_detail_empty = not risk_detail or (isinstance(risk_detail, list) and len(risk_detail) == 0)
+        
+        # 判断是否为None级别
+        if (risk_level in ['Low', 'Moderate']) and is_hacking_event_empty and is_detail_list_empty and is_risk_detail_empty:
+            level = 'None'
+        # 判断是否为Low级别
+        elif risk_level in ['Low', 'Moderate']:
+            level = 'Low'
+        # 判断是否为Moderate级别
+        elif risk_level == 'High':
+            level = 'Moderate'
+        # 判断是否为High级别
+        elif risk_level == 'Severe':
+            level = 'High'
+        else:
+            level = 'Unknown'
+        
+        # 计算二进制风险评分
+        binary_score = 0
+        
+        # 第一位：hacking_event不为空
+        if not is_hacking_event_empty:
+            binary_score |= 1  # 2^0 = 1
+        
+        # 第二位：detail_list里包含"Involved Illicit Activity"
+        if detail_list and isinstance(detail_list, list):
+            if any('Involved Illicit Activity' in str(item) for item in detail_list):
+                binary_score |= 2  # 2^1 = 2
+        
+        # 第三位：detail_list里包含"Interact with high-risk tag address"
+        if detail_list and isinstance(detail_list, list):
+            if any('Interact with high-risk tag address' in str(item) for item in detail_list):
+                binary_score |= 4  # 2^2 = 4
+        
+        # 第四位：detail_list里包含"Sanctioned entity"
+        if detail_list and isinstance(detail_list, list):
+            if any('Sanctioned entity' in str(item) for item in detail_list):
+                binary_score |= 8  # 2^3 = 8
+        
+        return (level, binary_score)
+    
+    def mergeRisk(self, level1: str, binary_score1: int, level2: str, binary_score2: int) -> tuple:
+        """
+        合并两个风险等级和风险评分
+        
+        参数:
+            level1: 第一个风险等级（None, Low, Moderate, High, Unknown）
+            binary_score1: 第一个二进制风险评分
+            level2: 第二个风险等级（None, Low, Moderate, High, Unknown）
+            binary_score2: 第二个二进制风险评分
+        
+        返回:
+            tuple: (level, binary_score) 其中:
+                - level (str): 合并后的风险等级（取风险高的）
+                - binary_score (int): 合并后的二进制风险评分（按位或操作）
+        """
+        # 定义风险等级优先级：Unknown < None < Low < Moderate < High
+        level_priority = {
+            'Unknown': 0,
+            'None': 1,
+            'Low': 2,
+            'Moderate': 3,
+            'High': 4
+        }
+        
+        # 获取两个level的优先级，如果level不在映射中，默认使用Unknown的优先级
+        priority1 = level_priority.get(level1, 0)
+        priority2 = level_priority.get(level2, 0)
+        
+        # 取风险高的level（优先级数值大的）
+        if priority1 >= priority2:
+            merged_level = level1
+        else:
+            merged_level = level2
+        
+        # 对binary_score进行按位或操作，任意一个score里是1，结果就是1
+        merged_binary_score = binary_score1 | binary_score2
+        
+        return (merged_level, merged_binary_score)

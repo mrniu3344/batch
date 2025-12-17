@@ -19,3 +19,10 @@ slack_webhook_url = {
 }
 
 wallet_address = "TCQKEmxNJuYoagbDkX4W5UZX9o3y5zocSS"
+
+# Risk API endpoints
+risk_api_endpoints = {
+    "low": "",  # 低级API endpoint
+    "moderate": "",  # 中级API endpoint
+    "high": ""  # 高级API endpoint
+}

@@ -387,6 +387,75 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                 cur.close()
                 logger.info(f"Updated deposit record {record_id} with risk assessment data and marked as reviewed")
                 
+                # 对钱包和交易都进行一次风险分析然后合并风险分析结果
+                try:
+                    # 分析钱包风险
+                    wallet_level, wallet_binary_score = risk_service.analyseRisk(
+                        wallet_score if wallet_risk_result else 0,
+                        wallet_risk_level if wallet_risk_result else 'Unknown',
+                        wallet_hacking_event if wallet_risk_result else '',
+                        wallet_detail_list if wallet_risk_result else [],
+                        wallet_risk_detail if wallet_risk_result else []
+                    )
+                    logger.info(f"Deposit record {record_id} wallet risk analysis - Level: {wallet_level}, Binary Score: {wallet_binary_score}")
+                    
+                    # 分析交易风险（如果存在）
+                    tx_level = None
+                    tx_binary_score = None
+                    if tx_risk_result:
+                        tx_level, tx_binary_score = risk_service.analyseRisk(
+                            tx_score if tx_risk_result else 0,
+                            tx_risk_level if tx_risk_result else 'Unknown',
+                            tx_hacking_event if tx_risk_result else '',
+                            tx_detail_list if tx_risk_result else [],
+                            tx_risk_detail if tx_risk_result else []
+                        )
+                        logger.info(f"Deposit record {record_id} transaction risk analysis - Level: {tx_level}, Binary Score: {tx_binary_score}")
+                        
+                        # 合并钱包和交易风险
+                        merged_level, merged_binary_score = risk_service.mergeRisk(
+                            wallet_level, wallet_binary_score,
+                            tx_level, tx_binary_score
+                        )
+                    else:
+                        # 如果没有交易风险，直接使用钱包风险
+                        merged_level = wallet_level
+                        merged_binary_score = wallet_binary_score
+                    
+                    logger.info(f"Deposit record {record_id} merged risk - Level: {merged_level}, Binary Score: {merged_binary_score}")
+                    
+                    # 根据合并后的风险级别调用相应的API
+                    # api_endpoint = None
+                    # if merged_level == 'Low':
+                    #     api_endpoint = constants.risk_api_endpoints["low"]
+                    # elif merged_level in ['Moderate', 'Unknown']:
+                    #     api_endpoint = constants.risk_api_endpoints["moderate"]
+                    # elif merged_level == 'High':
+                    #     api_endpoint = constants.risk_api_endpoints["high"]
+                    
+                    # if api_endpoint:
+                    #     try:
+                    #         # 获取to_address
+                    #         to_address = record.get("to_address")
+                    #         # 调用API，只传递to_address字段
+                    #         response = requests.post(
+                    #             api_endpoint,
+                    #             json={
+                    #                 "to_address": to_address
+                    #             },
+                    #             timeout=30
+                    #         )
+                    #         logger.info(f"Deposit record {record_id} API call response - Status: {response.status_code}, Endpoint: {api_endpoint}")
+                    #     except Exception as e:
+                    #         logger.error(f"Error calling API for deposit record {record_id}: {e}")
+                    # else:
+                    #     logger.warning(f"Deposit record {record_id} merged level {merged_level} has no corresponding API endpoint")
+                        
+                except Exception as e:
+                    logger.error(f"Error in risk analysis and API call for deposit record {record_id}: {e}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                
             except LPException as e:
                 e.print()
                 logger.error(f"Error processing deposit record {record_id}: {e.error_function}, {e.error_detail}")

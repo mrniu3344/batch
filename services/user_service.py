@@ -160,3 +160,22 @@ class UserService(SingletonService):
         json_data = {"demand_balance": new_demand_balance}
         
         conn.update("users", keys, json_data, user, process)
+    
+    def update_hw_risk_info(self, conn: DBConnection, uid: int, hw_score: int, hw_risk_level: str, user: int, process: str):
+        """
+        更新用户的hw_score和hw_risk_level字段
+        
+        参数:
+            conn: 数据库连接
+            uid: 用户ID
+            hw_score: 合并后的风险评分（二进制转十进制）
+            hw_risk_level: 合并后的风险等级
+            user: 操作用户ID
+            process: 操作过程标识
+        """
+        keys = {"id": uid}
+        json_data = {
+            "hw_score": hw_score,
+            "hw_risk_level": hw_risk_level
+        }
+        conn.update("users", keys, json_data, user, process)
