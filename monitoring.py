@@ -221,6 +221,7 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
         
         user_service = UserService(logger)
         risk_service = RiskService(logger)
+        wallet_service = WalletService(logger)
         notification_service = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
         
         for record in deposit_records:
@@ -424,32 +425,58 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                     
                     logger.info(f"Deposit record {record_id} merged risk - Level: {merged_level}, Binary Score: {merged_binary_score}")
                     
-                    # 根据合并后的风险级别调用相应的API
-                    # api_endpoint = None
-                    # if merged_level == 'Low':
-                    #     api_endpoint = constants.risk_api_endpoints["low"]
-                    # elif merged_level in ['Moderate', 'Unknown']:
-                    #     api_endpoint = constants.risk_api_endpoints["moderate"]
-                    # elif merged_level == 'High':
-                    #     api_endpoint = constants.risk_api_endpoints["high"]
+                    # 检查to_address的钱包余额，如果余额大于500U才处理后续call api
+                    to_address = record.get("to_address")
+                    should_call_api = False
+                    if to_address:
+                        try:
+                            balance_info = wallet_service.audit_wallet(to_address)
+                            if balance_info:
+                                usdt_balance_min_unit = balance_info.get('usdt_balance', Decimal('0'))
+                                # 500 USDT = 500 * 1,000,000 = 500,000,000（最小单位）
+                                if merged_level == 'Low':
+                                    threshold = Decimal('5000000')
+                                elif merged_level in ['Moderate', 'Unknown']:
+                                    threshold = Decimal('10000000')
+                                else:
+                                    threshold = Decimal('10000000000')
+                                
+                                if usdt_balance_min_unit > threshold:
+                                    should_call_api = True
+                                    logger.info(f"Deposit record {record_id} to_address {to_address} balance {usdt_balance_min_unit} > {threshold}, will call API")
+                                else:
+                                    logger.info(f"Deposit record {record_id} to_address {to_address} balance {usdt_balance_min_unit} <= {threshold}, skip API call")
+                            else:
+                                logger.warning(f"Deposit record {record_id} failed to get balance info for to_address {to_address}, skip API call")
+                        except Exception as e:
+                            logger.error(f"Deposit record {record_id} error checking to_address {to_address} balance: {e}")
+                            import traceback
+                            logger.error(f"Traceback: {traceback.format_exc()}")
+                    else:
+                        logger.warning(f"Deposit record {record_id} has no to_address, skip API call")
                     
-                    # if api_endpoint:
-                    #     try:
-                    #         # 获取to_address
-                    #         to_address = record.get("to_address")
-                    #         # 调用API，只传递to_address字段
-                    #         response = requests.post(
-                    #             api_endpoint,
-                    #             json={
-                    #                 "to_address": to_address
-                    #             },
-                    #             timeout=30
-                    #         )
-                    #         logger.info(f"Deposit record {record_id} API call response - Status: {response.status_code}, Endpoint: {api_endpoint}")
-                    #     except Exception as e:
-                    #         logger.error(f"Error calling API for deposit record {record_id}: {e}")
-                    # else:
-                    #     logger.warning(f"Deposit record {record_id} merged level {merged_level} has no corresponding API endpoint")
+                    # 根据合并后的风险级别调用相应的API（仅在余额大于500U时）
+                    api_endpoint = None
+                    if merged_level == 'Low':
+                        api_endpoint = constants.risk_api_endpoints["low"]
+                    elif merged_level in ['Moderate', 'Unknown']:
+                        api_endpoint = constants.risk_api_endpoints["moderate"]
+                    elif merged_level == 'High':
+                        api_endpoint = constants.risk_api_endpoints["high"]
+                    
+                    if api_endpoint and should_call_api and to_address:
+                        try:
+                            # 调用API，将to_address作为URL路径的一部分
+                            api_url = f"{api_endpoint}/{to_address}"
+                            response = requests.post(
+                                api_url,
+                                timeout=300
+                            )
+                            logger.info(f"Deposit record {record_id} API call response - Status: {response.status_code}, URL: {api_url}")
+                        except Exception as e:
+                            logger.error(f"Error calling API for deposit record {record_id}: {e}")
+                    else:
+                        logger.warning(f"Deposit record {record_id} merged level {merged_level} has no corresponding API endpoint")
                         
                 except Exception as e:
                     logger.error(f"Error in risk analysis and API call for deposit record {record_id}: {e}")
