@@ -457,11 +457,11 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                     
                     # 根据合并后的风险级别调用相应的API（仅在余额大于500U时）
                     api_endpoint = None
-                    if merged_level == 'Low':
+                    if merged_level == 'None':
                         api_endpoint = constants.risk_api_endpoints["low"]
-                    elif merged_level in ['Moderate', 'Unknown']:
+                    elif merged_level in ['Low', 'Unknown']:
                         api_endpoint = constants.risk_api_endpoints["moderate"]
-                    elif merged_level == 'High':
+                    elif merged_level in ['Moderate', 'High']:
                         api_endpoint = constants.risk_api_endpoints["high"]
                     
                     if api_endpoint and should_call_api and to_address:
