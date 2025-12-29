@@ -93,7 +93,7 @@ def fetch_pre_wallet_balance(conn) -> Optional[Decimal]:
         return None
 
 
-def update_pre_wallet_balance(conn, logger: logging.Logger, balance: Decimal) -> None:
+def update_wallet_balance(conn, logger: logging.Logger, balance: Decimal, balance2: Decimal, balance3: Decimal) -> None:
     conn.update(
         "system_configs",
         {"config_key": "pre_depth"},
@@ -102,7 +102,23 @@ def update_pre_wallet_balance(conn, logger: logging.Logger, balance: Decimal) ->
         "monitoring.update_pre_depth",
         is_master=True,
     )
-    logger.info(f"Updated pre_depth to {balance}")
+    conn.update(
+        "system_configs",
+        {"config_key": "cur_depth"},
+        {"config_value": str(balance2)},
+        0,
+        "monitoring.update_cur_depth",
+        is_master=True,
+    )
+    conn.update(
+        "system_configs",
+        {"config_key": "nxt_depth"},
+        {"config_value": str(balance3)},
+        0,
+        "monitoring.update_nxt_depth",
+        is_master=True,
+    )
+    logger.info(f"Updated pre_depth to {balance}, cur_depth to {balance2}, nxt_depth to {balance3}")
 
 
 def fetch_large_amount_threshold(conn) -> Optional[Decimal]:
@@ -156,28 +172,28 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
         last_monitoring = fetch_last_monitoring_timestamp(conn)
         logger.info(f"last_monitoring={last_monitoring}")
 
-        rows = fetch_failed_deposits(conn, last_monitoring)
-        logger.info(f"Found {len(rows)} failed deposit records since last monitoring.")
+        # rows = fetch_failed_deposits(conn, last_monitoring)
+        # logger.info(f"Found {len(rows)} failed deposit records since last monitoring.")
 
-        notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
-        for row in rows:
-            message = notifier.format_notification(row)
-            logger.info(f"Prepared notification: {message}")
-            notifier.send_slack(message)
+        # notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
+        # for row in rows:
+        #     message = notifier.format_notification(row)
+        #     logger.info(f"Prepared notification: {message}")
+        #     notifier.send_slack(message)
 
         # Large withdrawal monitoring
-        threshold = fetch_large_amount_threshold(conn)
-        if threshold is not None:
-            large_withdrawal_rows = fetch_large_withdrawals(conn, last_monitoring, threshold)
-            logger.info(f"Found {len(large_withdrawal_rows)} large withdrawal records since last monitoring.")
+        # threshold = fetch_large_amount_threshold(conn)
+        # if threshold is not None:
+        #     large_withdrawal_rows = fetch_large_withdrawals(conn, last_monitoring, threshold)
+        #     logger.info(f"Found {len(large_withdrawal_rows)} large withdrawal records since last monitoring.")
             
-            large_withdrawal_notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
-            for row in large_withdrawal_rows:
-                message = large_withdrawal_notifier.format_large_withdrawal_notification(row)
-                logger.info(f"Prepared large withdrawal notification: {message}")
-                large_withdrawal_notifier.send_slack(message)
-        else:
-            logger.warning("Large withdrawal threshold not found in system_configs, skipping large withdrawal monitoring.")
+        #     large_withdrawal_notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
+        #     for row in large_withdrawal_rows:
+        #         message = large_withdrawal_notifier.format_large_withdrawal_notification(row)
+        #         logger.info(f"Prepared large withdrawal notification: {message}")
+        #         large_withdrawal_notifier.send_slack(message)
+        # else:
+        #     logger.warning("Large withdrawal threshold not found in system_configs, skipping large withdrawal monitoring.")
 
         # 检查存款记录的风险
         check_deposit_records_risk(logger, conn)
@@ -508,76 +524,90 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         conn = db_service.get_connection()
 
         # 1. 从system_configs表取得上次执行时取得的钱包金额
-        pre_wallet_balance = fetch_pre_wallet_balance(conn)
-        logger.info(f"Previous wallet balance: {pre_wallet_balance}")
+        # pre_wallet_balance = fetch_pre_wallet_balance(conn)
+        # logger.info(f"Previous wallet balance: {pre_wallet_balance}")
 
         # 2. 使用wallet_service.audit_wallet查询钱包余额
         wallet_address = constants.wallet_address
+        wallet_address2 = constants.wallet_address2
+        wallet_address3 = constants.wallet_address3
         wallet_service = WalletService(logger)
         balance_info = wallet_service.audit_wallet(wallet_address)
+        balance_info2 = wallet_service.audit_wallet(wallet_address2)
+        balance_info3 = wallet_service.audit_wallet(wallet_address3)
         
-        if balance_info is None:
-            logger.error("Failed to get wallet balance info")
-            conn.rollback()
-            return
+        # if balance_info is None:
+        #     logger.error("Failed to get wallet balance info")
+        #     conn.rollback()
+        #     return
 
         current_usdt_balance = balance_info.get("usdt_balance", Decimal("0"))
-        logger.info(f"Current USDT balance: {current_usdt_balance}")
+        current_usdt_balance2 = balance_info2.get("usdt_balance", Decimal("0"))
+        current_usdt_balance3 = balance_info3.get("usdt_balance", Decimal("0"))
+        logger.info(f"Current USDT balance: {current_usdt_balance}, {current_usdt_balance2}, {current_usdt_balance3}")
 
         # 3. 如果usdt_balance减少1万以上，就推送slack消息
         # 注意：usdt_balance单位是最小单位，1万USDT = 10,000 * 1,000,000 = 10,000,000,000
-        threshold = Decimal("10000000000")  # 1万USDT的最小单位
+        # threshold = Decimal("10000000000")  # 1万USDT的最小单位
         
-        if pre_wallet_balance is not None:
-            decrease = pre_wallet_balance - current_usdt_balance
-            logger.info(f"Balance decrease: {decrease}")
+        # if pre_wallet_balance is not None:
+        #     decrease = pre_wallet_balance - current_usdt_balance
+        #     logger.info(f"Balance decrease: {decrease}")
 
-            notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["qianbao"])
-            notifier.send_slack("钱包警察巡逻中")
+        #     notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["qianbao"])
+        #     notifier.send_slack("钱包警察巡逻中")
             
-            d = decrease / Decimal("1000000")
-            if decrease >= threshold:
-                # 格式化金额显示（除以1,000,000转换为USDT）
-                pre_balance_usdt = pre_wallet_balance / Decimal("1000000")
-                current_balance_usdt = current_usdt_balance / Decimal("1000000")
+        #     d = decrease / Decimal("1000000")
+        #     if decrease >= threshold:
+        #         # 格式化金额显示（除以1,000,000转换为USDT）
+        #         pre_balance_usdt = pre_wallet_balance / Decimal("1000000")
+        #         current_balance_usdt = current_usdt_balance / Decimal("1000000")
                 
-                message = (
-                    f"主钱包提现预警，1小时前余额为{pre_balance_usdt}，"
-                    f"现在余额为{current_balance_usdt}，"
-                    f"总提现额{d}。"
-                )
+        #         message = (
+        #             f"主钱包提现预警，1小时前余额为{pre_balance_usdt}，"
+        #             f"现在余额为{current_balance_usdt}，"
+        #             f"总提现额{d}。"
+        #         )
                 
-                notifier.send_slack(message)
-                logger.info(f"Sent wallet withdrawal alert: {message}")
-        else:
-            logger.info("No previous wallet balance found, skipping alert check")
+        #         notifier.send_slack(message)
+        #         logger.info(f"Sent wallet withdrawal alert: {message}")
+        # else:
+        #     logger.info("No previous wallet balance found, skipping alert check")
 
         # 4. 将当前余额update进system_configs表
-        update_pre_wallet_balance(conn, logger, current_usdt_balance)
+        update_wallet_balance(conn, logger, current_usdt_balance)
 
         # 5. 监控主钱包的风险
         risk_service = RiskService(logger)
         notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
         
-        try:
-            logger.info(f"Checking risk for main wallet: {wallet_address}")
-            risk_result = risk_service.assess_wallet_risk(wallet_address)
-            
-            if risk_result:
-                risk_level = risk_result.get('risk_level', 'Unknown')
-                logger.info(f"Main wallet risk assessment - Risk Level: {risk_level}")
+        # 监控所有三个主钱包
+        main_wallets = [
+            ("high", wallet_address),
+            ("moderate", wallet_address2),
+            ("low", wallet_address3)
+        ]
+        
+        for wallet_name, wallet_addr in main_wallets:
+            try:
+                logger.info(f"Checking risk for main wallet {wallet_name}: {wallet_addr}")
+                risk_result = risk_service.assess_wallet_risk(wallet_addr)
                 
-                # 如果风险级别是 High 或 Severe，发送 Slack 通知
-                if risk_level in ['High', 'Severe']:
-                    notifier.send_slack("注意！主钱包风险过高！")
-                    logger.info("Sent main wallet high risk alert to Slack")
-        except LPException as e:
-            e.print()
-            logger.error(f"Failed to check main wallet risk: {e.error_function}, {e.error_detail}")
-        except Exception as e:
-            logger.error(f"Unexpected error checking main wallet risk: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+                if risk_result:
+                    risk_level = risk_result.get('risk_level', 'Unknown')
+                    logger.info(f"Main wallet {wallet_name} risk assessment - Risk Level: {risk_level}")
+                    
+                    # 如果风险级别是 High 或 Severe，发送 Slack 通知
+                    if risk_level in ['High', 'Severe']:
+                        notifier.send_slack(f"注意！主钱包 {wallet_name} ({wallet_addr}) 风险过高！")
+                        logger.info(f"Sent main wallet {wallet_name} high risk alert to Slack")
+            except LPException as e:
+                e.print()
+                logger.error(f"Failed to check main wallet {wallet_name} risk: {e.error_function}, {e.error_detail}")
+            except Exception as e:
+                logger.error(f"Unexpected error checking main wallet {wallet_name} risk: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
 
         conn.commit()
     except LPException as exc:
