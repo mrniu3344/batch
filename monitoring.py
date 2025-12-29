@@ -575,7 +575,7 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         #     logger.info("No previous wallet balance found, skipping alert check")
 
         # 4. 将当前余额update进system_configs表
-        update_wallet_balance(conn, logger, current_usdt_balance)
+        update_wallet_balance(conn, logger, current_usdt_balance, current_usdt_balance2, current_usdt_balance3)
 
         # 5. 监控主钱包的风险
         risk_service = RiskService(logger)
