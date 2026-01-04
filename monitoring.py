@@ -93,7 +93,7 @@ def fetch_pre_wallet_balance(conn) -> Optional[Decimal]:
         return None
 
 
-def update_wallet_balance(conn, logger: logging.Logger, balance: Decimal, balance2: Decimal, balance3: Decimal) -> None:
+def update_wallet_balance(conn, logger: logging.Logger, balance: Decimal, balance2: Decimal, balance3: Decimal, trx1: Decimal, trx2: Decimal, trx3: Decimal, trx4: Decimal, trx5: Decimal, trx6: Decimal) -> None:
     conn.update(
         "system_configs",
         {"config_key": "pre_depth"},
@@ -118,7 +118,54 @@ def update_wallet_balance(conn, logger: logging.Logger, balance: Decimal, balanc
         "monitoring.update_nxt_depth",
         is_master=True,
     )
-    logger.info(f"Updated pre_depth to {balance}, cur_depth to {balance2}, nxt_depth to {balance3}")
+    conn.update(
+        "system_configs",
+        {"config_key": "pre_depth_trx"},
+        {"config_value": str(trx1)},
+        0,
+        "monitoring.update_pre_depth_trx",
+        is_master=True,
+    )
+    conn.update(
+        "system_configs",
+        {"config_key": "cur_depth_trx"},
+        {"config_value": str(trx2)},
+        0,
+        "monitoring.update_cur_depth_trx",
+        is_master=True,
+    )
+    conn.update(
+        "system_configs",
+        {"config_key": "nxt_depth_trx"},
+        {"config_value": str(trx3)},
+        0,
+        "monitoring.update_nxt_depth_trx",
+        is_master=True,
+    )
+    conn.update(
+        "system_configs",
+        {"config_key": "pre_source_trx"},
+        {"config_value": str(trx4)},
+        0,
+        "monitoring.update_pre_source_trx",
+        is_master=True,
+    )
+    conn.update(
+        "system_configs",
+        {"config_key": "cur_source_trx"},
+        {"config_value": str(trx5)},
+        0,
+        "monitoring.update_cur_source_trx",
+        is_master=True,
+    )
+    conn.update(
+        "system_configs",
+        {"config_key": "nxt_source_trx"},
+        {"config_value": str(trx6)},
+        0,
+        "monitoring.update_nxt_source_trx",
+        is_master=True,
+    )
 
 
 def fetch_large_amount_threshold(conn) -> Optional[Decimal]:
@@ -523,6 +570,8 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         db_service = DBService(logger, mode)
         conn = db_service.get_connection()
 
+        audit(logger, conn)
+    
         # 1. 从system_configs表取得上次执行时取得的钱包金额
         # pre_wallet_balance = fetch_pre_wallet_balance(conn)
         # logger.info(f"Previous wallet balance: {pre_wallet_balance}")
@@ -531,10 +580,16 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         wallet_address = constants.wallet_address
         wallet_address2 = constants.wallet_address2
         wallet_address3 = constants.wallet_address3
+        wallet_address4 = constants.wallet_address4
+        wallet_address5 = constants.wallet_address5
+        wallet_address6 = constants.wallet_address6
         wallet_service = WalletService(logger)
         balance_info = wallet_service.audit_wallet(wallet_address)
         balance_info2 = wallet_service.audit_wallet(wallet_address2)
         balance_info3 = wallet_service.audit_wallet(wallet_address3)
+        balance_info4 = wallet_service.audit_wallet(wallet_address4)
+        balance_info5 = wallet_service.audit_wallet(wallet_address5)
+        balance_info6 = wallet_service.audit_wallet(wallet_address6)
         
         # if balance_info is None:
         #     logger.error("Failed to get wallet balance info")
@@ -544,7 +599,13 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         current_usdt_balance = balance_info.get("usdt_balance", Decimal("0"))
         current_usdt_balance2 = balance_info2.get("usdt_balance", Decimal("0"))
         current_usdt_balance3 = balance_info3.get("usdt_balance", Decimal("0"))
-        logger.info(f"Current USDT balance: {current_usdt_balance}, {current_usdt_balance2}, {current_usdt_balance3}")
+        current_trx_balance = balance_info.get("trx_balance", Decimal("0"))
+        current_trx_balance2 = balance_info2.get("trx_balance", Decimal("0"))
+        current_trx_balance3 = balance_info3.get("trx_balance", Decimal("0"))
+        current_trx_balance4 = balance_info4.get("trx_balance", Decimal("0"))
+        current_trx_balance5 = balance_info5.get("trx_balance", Decimal("0"))
+        current_trx_balance6 = balance_info6.get("trx_balance", Decimal("0"))
+        logger.info(f"Current USDT balance: {current_usdt_balance}, {current_usdt_balance2}, {current_usdt_balance3}, {current_trx_balance}, {current_trx_balance2}, {current_trx_balance3}, {current_trx_balance4}, {current_trx_balance5}, {current_trx_balance6}")
 
         # 3. 如果usdt_balance减少1万以上，就推送slack消息
         # 注意：usdt_balance单位是最小单位，1万USDT = 10,000 * 1,000,000 = 10,000,000,000
@@ -575,17 +636,20 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         #     logger.info("No previous wallet balance found, skipping alert check")
 
         # 4. 将当前余额update进system_configs表
-        update_wallet_balance(conn, logger, current_usdt_balance, current_usdt_balance2, current_usdt_balance3)
+        update_wallet_balance(conn, logger, current_usdt_balance, current_usdt_balance2, current_usdt_balance3, current_trx_balance, current_trx_balance2, current_trx_balance3, current_trx_balance4, current_trx_balance5, current_trx_balance6)
 
         # 5. 监控主钱包的风险
         risk_service = RiskService(logger)
         notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
         
-        # 监控所有三个主钱包
+        # 监控所有6个钱包
         main_wallets = [
             ("high", wallet_address),
             ("moderate", wallet_address2),
-            ("low", wallet_address3)
+            ("low", wallet_address3),
+            ("high_trx", wallet_address4),
+            ("moderate_trx", wallet_address5),
+            ("low_trx", wallet_address6)
         ]
         
         for wallet_name, wallet_addr in main_wallets:
@@ -634,6 +698,221 @@ def schedule_monitoring(logger: logging.Logger, mode: str) -> None:
         schedule.run_pending()
         time.sleep(1)
 
+def audit(logger, conn):
+    logger.info("===== audit start =====")
+    wallet_service = WalletService(logger)
+    user_service = UserService(logger)
+    risk_service = RiskService(logger)
+    notification_service = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
+    
+    users = user_service.get_audit_users(conn)
+    
+    if not users:
+        logger.info("没有需要审计的用户")
+        return
+    
+    logger.info(f"开始审计 {len(users)} 个钱包")
+    
+    for user in users:
+        try:
+            balance_info = wallet_service.audit_wallet(user.wallet)
+            
+            if balance_info:
+                audited_usdt = balance_info['usdt_balance']
+                audited_trx = balance_info['trx_balance']
+                logger.info(f"用户 {user.id} 审计结果 - USDT: {audited_usdt}, TRX: {audited_trx}")
+                
+                user_service.update_audited_info(conn, user.id, audited_usdt, audited_trx, 0, "batch.daily_wallet_audit")
+            else:
+                logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 审计失败，跳过更新")
+            
+            # 风险评估
+            try:
+                risk_result = risk_service.assess_wallet_risk(user.wallet)
+                if risk_result:
+                    score = risk_result.get('score', 0)
+                    risk_level = risk_result.get('risk_level', 'Unknown')
+                    hacking_event = risk_result.get('hacking_event', '')
+                    detail_list = risk_result.get('detail_list', [])
+                    risk_detail = risk_result.get('risk_detail', [])
+                    
+                    logger.info(f"用户 {user.id} 风险评估结果 - Score: {score}, Risk Level: {risk_level}")
+                    
+                    user_service.update_risk_info(
+                        conn,
+                        user.id,
+                        score,
+                        risk_level,
+                        0,
+                        "batch.daily_wallet_audit",
+                        hacking_event=hacking_event,
+                        detail_list=detail_list,
+                        risk_detail=risk_detail
+                    )
+                    
+                    # 钱包风险评估处理：合并用户钱包风险和deposit_records的风险
+                    try:
+                        # 1. 分析用户钱包风险
+                        user_wallet_level, user_wallet_binary_score = risk_service.analyseRisk(
+                            score,
+                            risk_level,
+                            hacking_event,
+                            detail_list,
+                            risk_detail
+                        )
+                        logger.info(f"用户 {user.id} 钱包风险分析 - Level: {user_wallet_level}, Binary Score: {user_wallet_binary_score}")
+                        
+                        # 2. 查询deposit_records表，获取10个字段
+                        sql = """
+                            SELECT id, score, risk_level, hacking_event, detail_list, risk_detail,
+                                   t_score, t_risk_level, t_hacking_event, t_detail_list, t_risk_detail
+                            FROM deposit_records
+                            WHERE user_id = %s AND status = 'completed'
+                        """
+                        deposit_records = conn.select(sql, (user.id,))
+                        logger.info(f"用户 {user.id} 找到 {len(deposit_records)} 条deposit_records记录")
+                        
+                        # 3. 合并所有风险
+                        merged_level = user_wallet_level
+                        merged_binary_score = user_wallet_binary_score
+                        
+                        import json as json_module
+                        for deposit_record in deposit_records:
+                            # 分析deposit_records中的钱包风险
+                            dr_score = deposit_record.get('score')
+                            dr_risk_level = deposit_record.get('risk_level')
+                            dr_hacking_event = deposit_record.get('hacking_event')
+                            dr_detail_list_str = deposit_record.get('detail_list')
+                            dr_risk_detail_str = deposit_record.get('risk_detail')
+                            
+                            # 解析JSON字符串
+                            dr_detail_list = []
+                            dr_risk_detail = []
+                            try:
+                                if dr_detail_list_str:
+                                    dr_detail_list = json_module.loads(dr_detail_list_str) if isinstance(dr_detail_list_str, str) else dr_detail_list_str
+                                if dr_risk_detail_str:
+                                    dr_risk_detail = json_module.loads(dr_risk_detail_str) if isinstance(dr_risk_detail_str, str) else dr_risk_detail_str
+                            except Exception as e:
+                                logger.warning(f"解析deposit_record {deposit_record.get('id')} 的JSON字段失败: {e}")
+                            
+                            if dr_score is not None and dr_risk_level:
+                                dr_wallet_level, dr_wallet_binary_score = risk_service.analyseRisk(
+                                    dr_score,
+                                    dr_risk_level,
+                                    dr_hacking_event or '',
+                                    dr_detail_list if isinstance(dr_detail_list, list) else [],
+                                    dr_risk_detail if isinstance(dr_risk_detail, list) else []
+                                )
+                                merged_level, merged_binary_score = risk_service.mergeRisk(
+                                    merged_level, merged_binary_score,
+                                    dr_wallet_level, dr_wallet_binary_score
+                                )
+                                logger.info(f"合并deposit_record钱包风险 - Level: {merged_level}, Binary Score: {merged_binary_score}")
+                            
+                            # 分析deposit_records中的交易风险
+                            dr_t_score = deposit_record.get('t_score')
+                            dr_t_risk_level = deposit_record.get('t_risk_level')
+                            dr_t_hacking_event = deposit_record.get('t_hacking_event')
+                            dr_t_detail_list_str = deposit_record.get('t_detail_list')
+                            dr_t_risk_detail_str = deposit_record.get('t_risk_detail')
+                            
+                            # 解析JSON字符串
+                            dr_t_detail_list = []
+                            dr_t_risk_detail = []
+                            try:
+                                if dr_t_detail_list_str:
+                                    dr_t_detail_list = json_module.loads(dr_t_detail_list_str) if isinstance(dr_t_detail_list_str, str) else dr_t_detail_list_str
+                                if dr_t_risk_detail_str:
+                                    dr_t_risk_detail = json_module.loads(dr_t_risk_detail_str) if isinstance(dr_t_risk_detail_str, str) else dr_t_risk_detail_str
+                            except Exception as e:
+                                logger.warning(f"解析deposit_record {deposit_record.get('id')} 的交易JSON字段失败: {e}")
+                            
+                            if dr_t_score is not None and dr_t_risk_level:
+                                dr_tx_level, dr_tx_binary_score = risk_service.analyseRisk(
+                                    dr_t_score,
+                                    dr_t_risk_level,
+                                    dr_t_hacking_event or '',
+                                    dr_t_detail_list if isinstance(dr_t_detail_list, list) else [],
+                                    dr_t_risk_detail if isinstance(dr_t_risk_detail, list) else []
+                                )
+                                merged_level, merged_binary_score = risk_service.mergeRisk(
+                                    merged_level, merged_binary_score,
+                                    dr_tx_level, dr_tx_binary_score
+                                )
+                                logger.info(f"合并deposit_record交易风险 - Level: {merged_level}, Binary Score: {merged_binary_score}")
+                        
+                        logger.info(f"用户 {user.id} 最终合并风险 - Level: {merged_level}, Binary Score: {merged_binary_score}")
+                        
+                        # 4. 检查hw_risk_level是否是强制指定的
+                        existing_user = user_service.get_user(conn, user.id)
+                        if existing_user:
+                            hw_risk_level = getattr(existing_user, 'hw_risk_level', None)
+                            if hw_risk_level in ['to_Low', 'to_Moderate', 'toHigh']:
+                                # 强制指定的情况下，不能变更风险级别，但需要更新score
+                                # 保持强制指定的级别不变
+                                final_level = hw_risk_level
+                                logger.info(f"用户 {user.id} hw_risk_level是强制指定的 ({hw_risk_level})，保持级别不变，但更新score为 {merged_binary_score}")
+                            else:
+                                # 非强制指定，使用合并后的级别
+                                final_level = merged_level
+                                logger.info(f"用户 {user.id} hw_risk_level不是强制指定的，使用合并后的级别 {final_level}")
+                        else:
+                            # 如果获取不到用户信息，使用合并后的级别
+                            final_level = merged_level
+                            logger.warning(f"无法获取用户 {user.id} 的信息，使用合并后的级别 {final_level}")
+                        
+                        # 5. 更新hw_score和hw_risk_level
+                        user_service.update_hw_risk_info(
+                            conn,
+                            user.id,
+                            merged_binary_score,
+                            final_level,
+                            0,
+                            "batch.daily_wallet_audit_hw_risk"
+                        )
+                        logger.info(f"用户 {user.id} hw_risk_info已更新 - hw_score: {merged_binary_score}, hw_risk_level: {final_level}")
+                        
+                    except Exception as e:
+                        logger.error(f"用户 {user.id} 钱包风险评估合并处理失败: {e}")
+                        import traceback
+                        logger.error(f"详细错误信息: {traceback.format_exc()}")
+                    
+                    # 如果风险级别是 High 或 Severe，发送 Slack 通知
+                    # if risk_level in ['High', 'Severe']:
+                    #     login_id = user.login_id or f"ID:{user.id}"
+                    #     message = notification_service.format_risk_notification(
+                    #         user_name=user.name,
+                    #         login_id=login_id,
+                    #         score=score,
+                    #         risk_level=risk_level,
+                    #         hacking_event=hacking_event,
+                    #         detail_list=detail_list,
+                    #         risk_detail=risk_detail
+                    #     )
+                        
+                    #     notification_service.send_slack(message)
+                    #     logger.info(f"用户 {user.id} 的高风险通知已发送到 Slack")
+                else:
+                    logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
+            except LPException as e:
+                e.print()
+                logger.error(f"钱包 {user.wallet} 风险评估失败 - 错误函数: {e.error_function}, 错误详情: {e.error_detail}")
+                logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
+            except Exception as e:
+                logger.error(f"钱包 {user.wallet} 风险评估失败: {type(e).__name__}: {str(e)}")
+                logger.error(f"详细错误信息: {traceback.format_exc()}")
+                logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
+                
+        except LPException as e:
+            # LPException 有详细的错误信息，使用 print() 方法记录
+            e.print()
+            logger.error(f"钱包 {user.wallet} 审计失败 - 错误函数: {e.error_function}, 错误详情: {e.error_detail}")
+            logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 审计失败，跳过更新")
+        except Exception as e:
+            logger.error(f"钱包 {user.wallet} 审计失败: {type(e).__name__}: {str(e)}")
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 审计失败，跳过更新")
 
 def main():
     parser = argparse.ArgumentParser()

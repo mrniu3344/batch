@@ -21,6 +21,9 @@ slack_webhook_url = {
 wallet_address = "TDLU7iCP5ohyy94je6emBegGeeKHaKkkSX"
 wallet_address2 = "TRYgfsFyAp4WgAszig1bwvVrhGynCdLAkL"
 wallet_address3 = "THkfWtH3H6RAMXSShBzbb1aoQ6y9bYp6eW"
+wallet_address4 = "TEbVrwewsjToshR3xFVp1bQMY9PpE4c8xF"
+wallet_address5 = "TFbLhQqQkQ4gqCXzWofwCiYSnjuqFBfm52"
+wallet_address6 = "TV7z8Dr8JBr1wrgMpShLaeSUajfapRcLgo"
 
 # Risk API endpoints (base URLs, wallet address will be appended as path)
 risk_api_endpoints = {
