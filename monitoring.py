@@ -771,7 +771,7 @@ def audit(logger, mode):
 
     try:
         conn = db_service.get_connection()
-        sql = "SELECT sum(audited_usdt)/1000000 as total_usdt FROM users"
+        sql = "SELECT sum(audited_usdt)/1000000 as total_usdt FROM users where id != 345"
         rows = conn.select(sql)
         if rows and rows[0].get("total_usdt") is not None:
             total_usdt = Decimal(str(rows[0]["total_usdt"]))
@@ -785,7 +785,6 @@ def audit(logger, mode):
                 "monitoring.update_user_345_audited_usdt",
                 is_master=True,
             )
-            logger.info(f"Updated user 345 audited_usdt to {result_min_unit} (USDT: {result_usdt})")
         else:
             logger.warning("Failed to get sum of audited_usdt from users table")
         conn.commit()
