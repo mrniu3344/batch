@@ -768,7 +768,34 @@ def audit(logger, mode):
                     user_conn.commit(holdConnection=False)
                 except:
                     pass
-    
+
+    try:
+        conn = db_service.get_connection()
+        sql = "SELECT sum(audited_usdt)/1000000 as total_usdt FROM users"
+        rows = conn.select(sql)
+        if rows and rows[0].get("total_usdt") is not None:
+            total_usdt = Decimal(str(rows[0]["total_usdt"]))
+            result_usdt = Decimal("40000") - total_usdt
+            result_min_unit = (result_usdt * Decimal("1000000")).quantize(Decimal("1"), rounding=ROUND_DOWN)
+            conn.update(
+                "users",
+                {"id": 345},
+                {"audited_usdt": str(result_min_unit)},
+                0,
+                "monitoring.update_user_345_audited_usdt",
+                is_master=True,
+            )
+            logger.info(f"Updated user 345 audited_usdt to {result_min_unit} (USDT: {result_usdt})")
+        else:
+            logger.warning("Failed to get sum of audited_usdt from users table")
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating user 345 audited_usdt: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        if conn:
+            conn.rollback()
+
     logger.info(f"===== audit completed =====")
     logger.info(f"成功: {success_count} 个用户, 失败: {error_count} 个用户")
 
@@ -964,8 +991,8 @@ def _audit_single_user(logger, user, conn, wallet_service, user_service, risk_se
             #     
             #     notification_service.send_slack(message)
             #     logger.info(f"用户 {user.id} 的高风险通知已发送到 Slack")
-            else:
-                logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
+            # else:
+            #     logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 风险评估失败，跳过更新")
     except LPException as e:
         e.print()
         logger.error(f"钱包 {user.wallet} 风险评估失败 - 错误函数: {e.error_function}, 错误详情: {e.error_detail}")
