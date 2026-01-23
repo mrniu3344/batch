@@ -498,11 +498,11 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                                 usdt_balance_min_unit = balance_info.get('usdt_balance', Decimal('0'))
                                 # 500 USDT = 500 * 1,000,000 = 500,000,000（最小单位）
                                 if merged_level == 'None':
-                                    threshold = Decimal('5000000')
-                                elif merged_level in ['Low', 'Unknown']:
                                     threshold = Decimal('10000000')
+                                elif merged_level in ['Low', 'Unknown']:
+                                    threshold = Decimal('100000000')
                                 else:
-                                    threshold = Decimal('10000000000')
+                                    threshold = Decimal('20000000000')
                                 
                                 if usdt_balance_min_unit > threshold:
                                     should_call_api = True

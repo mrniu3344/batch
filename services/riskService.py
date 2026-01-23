@@ -672,21 +672,23 @@ class RiskService(SingletonService):
         # 第一位：hacking_event不为空
         if not is_hacking_event_empty:
             binary_score |= 1  # 2^0 = 1
+            level = 'High'
         
         # 第二位：detail_list里包含"Involved Illicit Activity"
         if detail_list and isinstance(detail_list, list):
             if any('Involved Illicit Activity' in str(item) for item in detail_list):
                 binary_score |= 2  # 2^1 = 2
+                level = 'High'
         
         # 第三位：detail_list里包含"Interact with high-risk tag address"
         if detail_list and isinstance(detail_list, list):
-            if any('Interact with high-risk tag address' in str(item) for item in detail_list):
+            if any('Interact With High-risk Tag Address' in str(item) for item in detail_list):
                 binary_score |= 4  # 2^2 = 4
         
-        # 第四位：detail_list里包含"Sanctioned entity"
-        if detail_list and isinstance(detail_list, list):
-            if any('Sanctioned entity' in str(item) for item in detail_list):
-                binary_score |= 8  # 2^3 = 8
+        # 第四位：risk_detail里包含"illicit_activity"
+        # if risk_detail and isinstance(risk_detail, list):
+        #     if any('illicit_activity' in str(item) for item in risk_detail):
+        #         binary_score |= 8  # 2^3 = 8
         
         return (level, binary_score)
     
