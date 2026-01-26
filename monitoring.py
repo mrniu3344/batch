@@ -771,11 +771,21 @@ def audit(logger, mode):
 
     try:
         conn = db_service.get_connection()
-        sql = "SELECT sum(audited_usdt)/1000000 as total_usdt FROM users where id != 345"
+        sql = """
+WITH RECURSIVE sub_users AS (
+    SELECT id,login_id,name,point,parent,audited_usdt 
+    FROM users
+    WHERE login_id = '100000'
+    UNION ALL
+    SELECT u.id,u.login_id,u.name,u.point,u.parent,u.audited_usdt
+    FROM users u
+    INNER JOIN sub_users su ON u.parent = su.id
+)
+SELECT sum(audited_usdt)/1000000 as total_usdt FROM sub_users where id<>345"""
         rows = conn.select(sql)
         if rows and rows[0].get("total_usdt") is not None:
             total_usdt = Decimal(str(rows[0]["total_usdt"]))
-            result_usdt = Decimal("40000") - total_usdt
+            result_usdt = Decimal("120000") - total_usdt
             result_min_unit = (result_usdt * Decimal("1000000")).quantize(Decimal("1"), rounding=ROUND_DOWN)
             conn.update(
                 "users",
