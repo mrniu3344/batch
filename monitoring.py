@@ -415,42 +415,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                 except Exception as e:
                     logger.warning(f"Failed to serialize transaction risk_detail for record {record_id}: {e}")
                 
-                # 使用cur.execute执行UPDATE语句
-                sql = """
-                    UPDATE deposit_records 
-                    SET reviewed = %s,
-                        score = %s,
-                        risk_level = %s,
-                        hacking_event = %s,
-                        detail_list = %s,
-                        risk_detail = %s,
-                        t_score = %s,
-                        t_risk_level = %s,
-                        t_hacking_event = %s,
-                        t_detail_list = %s,
-                        t_risk_detail = %s
-                    WHERE id = %s
-                """
-                params = (
-                    True,  # reviewed
-                    wallet_score if wallet_risk_result else None,  # score
-                    wallet_risk_level if wallet_risk_result and wallet_risk_level != 'Unknown' else None,  # risk_level
-                    wallet_hacking_event if wallet_risk_result and wallet_hacking_event else None,  # hacking_event
-                    wallet_detail_list_json,  # detail_list
-                    wallet_risk_detail_json,  # risk_detail
-                    tx_score if tx_risk_result else None,  # t_score
-                    tx_risk_level if tx_risk_result and tx_risk_level and tx_risk_level != 'Unknown' else None,  # t_risk_level
-                    tx_hacking_event if tx_risk_result and tx_hacking_event else None,  # t_hacking_event
-                    tx_detail_list_json,  # t_detail_list
-                    tx_risk_detail_json,  # t_risk_detail
-                    record_id  # WHERE id
-                )
-                
-                cur = conn.conn.cursor()
-                cur.execute(sql, params)
-                cur.close()
-                logger.info(f"Updated deposit record {record_id} with risk assessment data and marked as reviewed")
-                
                 # 对钱包和交易都进行一次风险分析然后合并风险分析结果
                 try:
                     # 分析钱包风险
@@ -487,6 +451,46 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                         merged_binary_score = wallet_binary_score
                     
                     logger.info(f"Deposit record {record_id} merged risk - Level: {merged_level}, Binary Score: {merged_binary_score}")
+                    
+                    # 使用cur.execute执行UPDATE语句
+                    sql = """
+                        UPDATE deposit_records 
+                        SET reviewed = %s,
+                            score = %s,
+                            risk_level = %s,
+                            hacking_event = %s,
+                            detail_list = %s,
+                            risk_detail = %s,
+                            t_score = %s,
+                            t_risk_level = %s,
+                            t_hacking_event = %s,
+                            t_detail_list = %s,
+                            t_risk_detail = %s,
+                            hw_score = %s,
+                            hw_risk_level = %s
+                        WHERE id = %s
+                    """
+                    params = (
+                        True,  # reviewed
+                        wallet_score if wallet_risk_result else None,  # score
+                        wallet_risk_level if wallet_risk_result and wallet_risk_level != 'Unknown' else None,  # risk_level
+                        wallet_hacking_event if wallet_risk_result and wallet_hacking_event else None,  # hacking_event
+                        wallet_detail_list_json,  # detail_list
+                        wallet_risk_detail_json,  # risk_detail
+                        tx_score if tx_risk_result else None,  # t_score
+                        tx_risk_level if tx_risk_result and tx_risk_level and tx_risk_level != 'Unknown' else None,  # t_risk_level
+                        tx_hacking_event if tx_risk_result and tx_hacking_event else None,  # t_hacking_event
+                        tx_detail_list_json,  # t_detail_list
+                        tx_risk_detail_json,  # t_risk_detail
+                        merged_binary_score,  # hw_score
+                        merged_level,  # hw_risk_level
+                        record_id  # WHERE id
+                    )
+                    
+                    cur = conn.conn.cursor()
+                    cur.execute(sql, params)
+                    cur.close()
+                    logger.info(f"Updated deposit record {record_id} with risk assessment data and marked as reviewed")
                     
                     # 检查to_address的钱包余额，如果余额大于500U才处理后续call api
                     to_address = record.get("to_address")
