@@ -227,7 +227,7 @@ class NotificationService(SingletonService):
         to_address = row.get("to_address") or ""
 
         return (
-            f"{name}(ID:{user_id},登录号:{login_id})提现失败。"
+            f"{name}(ID:{user_id},登录号:{login_id})提现异常。"
             f"提现时间:{created_at_str}，金额:{amount_formatted}，目标钱包:{to_address}。"
         )
     

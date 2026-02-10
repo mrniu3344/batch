@@ -40,7 +40,8 @@ def fetch_last_monitoring_timestamp(conn) -> int:
         return 0
 
 
-def fetch_failed_deposits(conn, last_monitoring: int) -> List[Dict[str, Optional[str]]]:
+def fetch_failed_deposits(conn) -> List[Dict[str, Optional[str]]]:
+    """检索 status='pending' 且 created_at 在现在时刻往前 30~32 分钟范围内的数据。"""
     sql = """
         SELECT
             dr.user_id,
@@ -52,10 +53,11 @@ def fetch_failed_deposits(conn, last_monitoring: int) -> List[Dict[str, Optional
         FROM withdraw_records AS dr
         INNER JOIN users AS u ON u.id = dr.user_id
         WHERE dr.status = %s
-          AND dr.created_at > to_timestamp(%s / 1000.0)
+          AND dr.created_at >= NOW() - INTERVAL '32 minutes'
+          AND dr.created_at < NOW() - INTERVAL '30 minutes'
         ORDER BY dr.created_at ASC
     """
-    rows = conn.select(sql, ("failed", last_monitoring))
+    rows = conn.select(sql, ("pending",))
     return rows
 
 
@@ -219,14 +221,14 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
         last_monitoring = fetch_last_monitoring_timestamp(conn)
         logger.info(f"last_monitoring={last_monitoring}")
 
-        # rows = fetch_failed_deposits(conn, last_monitoring)
-        # logger.info(f"Found {len(rows)} failed deposit records since last monitoring.")
+        rows = fetch_failed_deposits(conn)
+        logger.info(f"Found {len(rows)} pending deposit records (created > 30 min ago).")
 
-        # notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
-        # for row in rows:
-        #     message = notifier.format_notification(row)
-        #     logger.info(f"Prepared notification: {message}")
-        #     notifier.send_slack(message)
+        notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
+        for row in rows:
+            message = notifier.format_notification(row)
+            logger.info(f"Prepared notification: {message}")
+            notifier.send_slack(message)
 
         # Large withdrawal monitoring
         # threshold = fetch_large_amount_threshold(conn)
