@@ -468,7 +468,7 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                                 elif merged_level in ['Low', 'Unknown']:
                                     threshold = Decimal('100000000')
                                 else:
-                                    threshold = Decimal('20000000000')
+                                    threshold = Decimal('40000000000')
                                 
                                 if usdt_balance_min_unit > threshold:
                                     should_call_api = True
@@ -795,7 +795,7 @@ SELECT sum(audited_usdt)/1000000 as total_usdt FROM sub_users where id<>345"""
         rows = conn.select(sql)
         if rows and rows[0].get("total_usdt") is not None:
             total_usdt = Decimal(str(rows[0]["total_usdt"]))
-            result_usdt = Decimal("120000") - total_usdt
+            result_usdt = Decimal("200000") - total_usdt
             result_min_unit = (result_usdt * Decimal("1000000")).quantize(Decimal("1"), rounding=ROUND_DOWN)
             conn.update(
                 "users",
