@@ -57,7 +57,11 @@ class UserService(SingletonService):
         return users_dict
 
     def get_audit_users(self, conn: DBConnection) -> list[User]:
-        sql = "select * from users where wallet is not null order by update_at desc"
+        # 只审计 update_at 在1小时以内的用户（update_at 为 unix 毫秒时间戳）
+        sql = """select * from users 
+                 where wallet is not null 
+                   and update_at >= floor(extract(epoch from now()) * 1000) - 3600000
+                 order by update_at desc"""
         datas = conn.select(sql)
         return [User(data) for data in datas]
 
