@@ -71,7 +71,6 @@ def update_last_monitoring(conn, logger: logging.Logger) -> None:
         "monitoring.update_last_monitoring",
         is_master=True,
     )
-    logger.info(f"Updated last_monitoring to {now_ms}")
 
 
 def fetch_pre_wallet_balance(conn) -> Optional[Decimal]:
@@ -219,7 +218,6 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
         conn = db_service.get_connection()
 
         last_monitoring = fetch_last_monitoring_timestamp(conn)
-        logger.info(f"last_monitoring={last_monitoring}")
 
         rows = fetch_failed_deposits(conn)
         logger.info(f"Found {len(rows)} pending deposit records (created > 30 min ago).")
@@ -227,7 +225,6 @@ def run_monitoring(logger: logging.Logger, mode: str) -> None:
         notifier = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["tixian"])
         for row in rows:
             message = notifier.format_notification(row)
-            logger.info(f"Prepared notification: {message}")
             notifier.send_slack(message)
 
         # Large withdrawal monitoring
@@ -309,7 +306,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                     continue
                 
                 # 检查from_address的风险
-                logger.info(f"Checking wallet risk for deposit record {record_id}, from_address: {from_address}")
                 wallet_risk_result = None
                 wallet_score = 0
                 wallet_risk_level = 'Unknown'
@@ -325,7 +321,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                         wallet_hacking_event = wallet_risk_result.get('hacking_event', '')
                         wallet_detail_list = wallet_risk_result.get('detail_list', [])
                         wallet_risk_detail = wallet_risk_result.get('risk_detail', [])
-                        logger.info(f"Deposit record {record_id} wallet risk assessment - Score: {wallet_score}, Risk Level: {wallet_risk_level}")
                     else:
                         logger.warning(f"Failed to get wallet risk assessment for deposit record {record_id}")
                 except Exception as e:
@@ -340,7 +335,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                 tx_risk_detail = None
                 
                 if tx_id:
-                    logger.info(f"Checking transaction risk for deposit record {record_id}, tx_id: {tx_id}")
                     try:
                         tx_risk_result = risk_service.assess_transaction_risk(tx_id)
                         if tx_risk_result:
@@ -349,7 +343,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                             tx_hacking_event = tx_risk_result.get('hacking_event', '')
                             tx_detail_list = tx_risk_result.get('detail_list', [])
                             tx_risk_detail = tx_risk_result.get('risk_detail', [])
-                            logger.info(f"Deposit record {record_id} transaction risk assessment - Score: {tx_score}, Risk Level: {tx_risk_level}")
                         else:
                             logger.warning(f"Failed to get transaction risk assessment for deposit record {record_id}")
                     except Exception as e:
@@ -427,7 +420,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                         wallet_detail_list if wallet_risk_result else [],
                         wallet_risk_detail if wallet_risk_result else []
                     )
-                    logger.info(f"Deposit record {record_id} wallet risk analysis - Level: {wallet_level}, Binary Score: {wallet_binary_score}")
                     
                     # 分析交易风险（如果存在）
                     tx_level = None
@@ -440,7 +432,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                             tx_detail_list if tx_risk_result else [],
                             tx_risk_detail if tx_risk_result else []
                         )
-                        logger.info(f"Deposit record {record_id} transaction risk analysis - Level: {tx_level}, Binary Score: {tx_binary_score}")
                         
                         # 合并钱包和交易风险
                         merged_level, merged_binary_score = risk_service.mergeRisk(
@@ -452,7 +443,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                         merged_level = wallet_level
                         merged_binary_score = wallet_binary_score
                     
-                    logger.info(f"Deposit record {record_id} merged risk - Level: {merged_level}, Binary Score: {merged_binary_score}")
                     
                     # 检查to_address的钱包余额，如果余额大于500U才处理后续call api
                     to_address = record.get("to_address")
@@ -472,9 +462,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                                 
                                 if usdt_balance_min_unit > threshold:
                                     should_call_api = True
-                                    logger.info(f"Deposit record {record_id} to_address {to_address} balance {usdt_balance_min_unit} > {threshold}, will call API")
-                                else:
-                                    logger.info(f"Deposit record {record_id} to_address {to_address} balance {usdt_balance_min_unit} <= {threshold}, skip API call")
                             else:
                                 logger.warning(f"Deposit record {record_id} failed to get balance info for to_address {to_address}, skip API call")
                         except Exception as e:
@@ -505,7 +492,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                                 api_url,
                                 timeout=300
                             )
-                            logger.info(f"Deposit record {record_id} API call response - Status: {response.status_code}, URL: {api_url}")
                         except Exception as e:
                             logger.error(f"Error calling API for deposit record {record_id}: {e}")
                     else:
@@ -549,7 +535,6 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                     cur = conn.conn.cursor()
                     cur.execute(sql, params)
                     cur.close()
-                    logger.info(f"Updated deposit record {record_id} with risk assessment data and marked as reviewed")
                         
                 except Exception as e:
                     logger.error(f"Error in risk analysis and API call for deposit record {record_id}: {e}")
@@ -616,7 +601,6 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         current_trx_balance4 = balance_info4.get("trx_balance", Decimal("0"))
         current_trx_balance5 = balance_info5.get("trx_balance", Decimal("0"))
         current_trx_balance6 = balance_info6.get("trx_balance", Decimal("0"))
-        logger.info(f"Current USDT balance: {current_usdt_balance}, {current_usdt_balance2}, {current_usdt_balance3}, {current_trx_balance}, {current_trx_balance2}, {current_trx_balance3}, {current_trx_balance4}, {current_trx_balance5}, {current_trx_balance6}")
 
         # 3. 如果usdt_balance减少1万以上，就推送slack消息
         # 注意：usdt_balance单位是最小单位，1万USDT = 10,000 * 1,000,000 = 10,000,000,000
@@ -665,17 +649,13 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         
         for wallet_name, wallet_addr in main_wallets:
             try:
-                logger.info(f"Checking risk for main wallet {wallet_name}: {wallet_addr}")
                 risk_result = risk_service.assess_wallet_risk(wallet_addr)
                 
                 if risk_result:
                     risk_level = risk_result.get('risk_level', 'Unknown')
-                    logger.info(f"Main wallet {wallet_name} risk assessment - Risk Level: {risk_level}")
-                    
                     # 如果风险级别是 High 或 Severe，发送 Slack 通知
                     if risk_level in ['High', 'Severe']:
                         notifier.send_slack(f"注意！主钱包 {wallet_name} ({wallet_addr}) 风险过高！")
-                        logger.info(f"Sent main wallet {wallet_name} high risk alert to Slack")
             except LPException as e:
                 e.print()
                 logger.error(f"Failed to check main wallet {wallet_name} risk: {e.error_function}, {e.error_detail}")
@@ -755,7 +735,6 @@ def audit(logger, mode):
             # 立即提交当前用户的事务
             user_conn.commit()
             success_count += 1
-            logger.info(f"用户 {user.id} 审计完成并已提交")
             
         except LPException as e:
             # LPException 有详细的错误信息，使用 print() 方法记录
@@ -837,8 +816,6 @@ def _audit_single_user(logger, user, conn, wallet_service, user_service, risk_se
     if balance_info:
         audited_usdt = balance_info['usdt_balance']
         audited_trx = balance_info['trx_balance']
-        logger.info(f"用户 {user.id} 审计结果 - USDT: {audited_usdt}, TRX: {audited_trx}")
-        
         user_service.update_audited_info(conn, user.id, audited_usdt, audited_trx, 0, "batch.daily_wallet_audit")
     else:
         logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 审计失败，跳过更新")
@@ -852,8 +829,6 @@ def _audit_single_user(logger, user, conn, wallet_service, user_service, risk_se
             hacking_event = risk_result.get('hacking_event', '')
             detail_list = risk_result.get('detail_list', [])
             risk_detail = risk_result.get('risk_detail', [])
-            
-            logger.info(f"用户 {user.id} 风险评估结果 - Score: {score}, Risk Level: {risk_level}")
             
             user_service.update_risk_info(
                 conn,
@@ -877,8 +852,6 @@ def _audit_single_user(logger, user, conn, wallet_service, user_service, risk_se
                     detail_list,
                     risk_detail
                 )
-                logger.info(f"用户 {user.id} 钱包风险分析 - Level: {user_wallet_level}, Binary Score: {user_wallet_binary_score}")
-                
                 # 2. 查询deposit_records表，获取10个字段
                 sql = """
                     SELECT id, score, risk_level, hacking_event, detail_list, risk_detail,
@@ -887,7 +860,6 @@ def _audit_single_user(logger, user, conn, wallet_service, user_service, risk_se
                     WHERE user_id = %s AND status = 'completed'
                 """
                 deposit_records = conn.select(sql, (user.id,))
-                logger.info(f"用户 {user.id} 找到 {len(deposit_records)} 条deposit_records记录")
                 
                 # 3. 合并所有风险
                 merged_level = user_wallet_level
@@ -925,7 +897,6 @@ def _audit_single_user(logger, user, conn, wallet_service, user_service, risk_se
                             merged_level, merged_binary_score,
                             dr_wallet_level, dr_wallet_binary_score
                         )
-                        logger.info(f"合并deposit_record钱包风险 - Level: {merged_level}, Binary Score: {merged_binary_score}")
                     
                     # 分析deposit_records中的交易风险
                     dr_t_score = deposit_record.get('t_score')

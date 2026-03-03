@@ -46,7 +46,6 @@ class RiskService(SingletonService):
         for attempt in range(max_retries + 1):
             try:
                 if attempt > 0:
-                    self.logger.info(f"Retrying create risk task for {wallet_address} (attempt {attempt + 1}/{max_retries + 1}) after {delay:.1f}s delay...")
                     time.sleep(delay)
                     delay *= 2
                 
@@ -56,9 +55,6 @@ class RiskService(SingletonService):
                     json=payload,
                     timeout=30
                 )
-                
-                self.logger.info(f"API response status: {response.status_code}")
-                self.logger.info(f"API response content: {response.text}")
                 
                 if response.status_code == 429:
                     last_exception = requests.exceptions.HTTPError(f"Rate limit (429) on attempt {attempt + 1}")
@@ -96,7 +92,6 @@ class RiskService(SingletonService):
                     self.logger.error(f"API response missing 'data' field: {result}")
                     raise LPException(self.logger, "RiskService._create_risk_task", f"API response missing 'data' field: {result}")
                 
-                self.logger.info(f"Task created successfully. Data: {data}")
                 return data
                 
             except requests.exceptions.Timeout as e:
@@ -149,7 +144,6 @@ class RiskService(SingletonService):
         for attempt in range(max_retries + 1):
             try:
                 if attempt > 0:
-                    self.logger.info(f"Retrying query risk task for {wallet_address} (attempt {attempt + 1}/{max_retries + 1}) after {delay:.1f}s delay...")
                     time.sleep(delay)
                     delay *= 2
                 
@@ -158,9 +152,6 @@ class RiskService(SingletonService):
                     params=params,
                     timeout=30
                 )
-                
-                self.logger.info(f"Query API response status: {response.status_code}")
-                self.logger.info(f"Query API response content: {response.text}")
                 
                 if response.status_code == 429:
                     last_exception = requests.exceptions.HTTPError(f"Rate limit (429) on attempt {attempt + 1}")
@@ -186,23 +177,17 @@ class RiskService(SingletonService):
                     error_msg = result.get('msg', 'Unknown error')
                     # 如果任务还未完成，返回None而不是抛出异常
                     if 'not ready' in error_msg.lower() or 'no result' in error_msg.lower():
-                        self.logger.info(f"Task not ready yet: {error_msg}")
                         return None
                     raise LPException(self.logger, "RiskService._query_risk_task", f"API returned error: {error_msg}")
                 
                 data = result.get('data', {})
                 # 检查任务是否已完成：如果数据中包含 score 字段，说明结果已经准备好
                 if 'score' in data:
-                    self.logger.info(f"Task result ready, score: {data.get('score')}")
                     return data
                 
-                # 如果没有 score 字段，检查 has_result 字段
                 if data.get('has_result', False):
-                    self.logger.info(f"Task result ready (has_result=True)")
                     return data
                 
-                # 结果还未准备好
-                self.logger.info(f"Task result not ready, has_result: {data.get('has_result', False)}, has_score: {'score' in data}")
                 return None
                 
             except requests.exceptions.Timeout as e:
@@ -253,18 +238,15 @@ class RiskService(SingletonService):
         # 在方法开始时sleep 1秒，降低API调用频率
         time.sleep(1.0)
         
-        self.logger.info(f"Starting risk assessment for wallet: {wallet_address}")
         
         # 1. 创建风险评估任务
         try:
-            self.logger.info(f"Creating risk assessment task for wallet: {wallet_address}, coin: {coin}")
             task_data = self._create_risk_task(wallet_address, coin)
             
             # 验证任务数据
             if not task_data:
                 raise LPException(self.logger, "RiskService.assess_wallet_risk", f"Task creation returned empty data for wallet {wallet_address}")
             
-            self.logger.info(f"Risk task created successfully for wallet {wallet_address}: {task_data}")
             
             # 检查是否有错误信息
             if 'error' in task_data or 'error_msg' in task_data:
@@ -281,8 +263,6 @@ class RiskService(SingletonService):
             raise
         
         # 2. 轮询查询任务结果
-        # 第一次查询前等待一段时间，给任务处理时间
-        self.logger.info(f"Waiting {polling_interval}s before first query...")
         time.sleep(polling_interval)
         
         result = None
@@ -291,12 +271,10 @@ class RiskService(SingletonService):
                 result = self._query_risk_task(wallet_address, coin)
                 
                 if result is not None:
-                    self.logger.info(f"Risk assessment result obtained for wallet {wallet_address} after {attempt + 1} polling attempts")
                     break
                 
                 # 如果结果还未准备好，等待后继续轮询
                 if attempt < max_polling_attempts - 1:
-                    self.logger.info(f"Risk task result not ready yet for wallet {wallet_address}, waiting {polling_interval}s before next poll (attempt {attempt + 1}/{max_polling_attempts})...")
                     time.sleep(polling_interval)
                 else:
                     self.logger.warning(f"Risk task result not ready after {max_polling_attempts} polling attempts for wallet {wallet_address}")
@@ -319,7 +297,6 @@ class RiskService(SingletonService):
             'scanned_ts': result.get('scanned_ts', 0)
         }
         
-        self.logger.info(f"Risk assessment completed for wallet {wallet_address}: {risk_assessment}")
         return risk_assessment
     
     def assess_transaction_risk(self, transaction_id: str, coin: str = "USDT-TRC20", max_polling_attempts: int = 3, polling_interval: float = 2.0) -> Dict:
@@ -352,14 +329,12 @@ class RiskService(SingletonService):
         
         # 1. 创建交易风险评估任务
         try:
-            self.logger.info(f"Creating risk assessment task for transaction: {transaction_id}, coin: {coin}")
             task_data = self._create_transaction_risk_task(transaction_id, coin)
             
             # 验证任务数据
             if not task_data:
                 raise LPException(self.logger, "RiskService.assess_transaction_risk", f"Task creation returned empty data for transaction {transaction_id}")
             
-            self.logger.info(f"Risk task created successfully for transaction {transaction_id}: {task_data}")
             
             # 检查是否有错误信息
             if 'error' in task_data or 'error_msg' in task_data:
@@ -376,8 +351,6 @@ class RiskService(SingletonService):
             raise
         
         # 2. 轮询查询任务结果
-        # 第一次查询前等待一段时间，给任务处理时间
-        self.logger.info(f"Waiting {polling_interval}s before first query...")
         time.sleep(polling_interval)
         
         result = None
@@ -386,12 +359,10 @@ class RiskService(SingletonService):
                 result = self._query_transaction_risk_task(transaction_id, coin)
                 
                 if result is not None:
-                    self.logger.info(f"Risk assessment result obtained for transaction {transaction_id} after {attempt + 1} polling attempts")
                     break
                 
                 # 如果结果还未准备好，等待后继续轮询
                 if attempt < max_polling_attempts - 1:
-                    self.logger.info(f"Risk task result not ready yet for transaction {transaction_id}, waiting {polling_interval}s before next poll (attempt {attempt + 1}/{max_polling_attempts})...")
                     time.sleep(polling_interval)
                 else:
                     self.logger.warning(f"Risk task result not ready after {max_polling_attempts} polling attempts for transaction {transaction_id}")
@@ -414,7 +385,6 @@ class RiskService(SingletonService):
             'scanned_ts': result.get('scanned_ts', 0)
         }
         
-        self.logger.info(f"Risk assessment completed for transaction {transaction_id}: {risk_assessment}")
         return risk_assessment
     
     def _create_transaction_risk_task(self, transaction_id: str, coin: str = "USDT-TRC20", max_retries: int = 3, initial_delay: float = 1.0) -> Dict:
@@ -449,7 +419,6 @@ class RiskService(SingletonService):
         for attempt in range(max_retries + 1):
             try:
                 if attempt > 0:
-                    self.logger.info(f"Retrying create transaction risk task for {transaction_id} (attempt {attempt + 1}/{max_retries + 1}) after {delay:.1f}s delay...")
                     time.sleep(delay)
                     delay *= 2
                 
@@ -459,9 +428,6 @@ class RiskService(SingletonService):
                     json=payload,
                     timeout=30
                 )
-                
-                self.logger.info(f"API response status: {response.status_code}")
-                self.logger.info(f"API response content: {response.text}")
                 
                 if response.status_code == 429:
                     last_exception = requests.exceptions.HTTPError(f"Rate limit (429) on attempt {attempt + 1}")
@@ -499,7 +465,6 @@ class RiskService(SingletonService):
                     self.logger.error(f"API response missing 'data' field: {result}")
                     raise LPException(self.logger, "RiskService._create_transaction_risk_task", f"API response missing 'data' field: {result}")
                 
-                self.logger.info(f"Task created successfully. Data: {data}")
                 return data
                 
             except requests.exceptions.Timeout as e:
@@ -552,7 +517,6 @@ class RiskService(SingletonService):
         for attempt in range(max_retries + 1):
             try:
                 if attempt > 0:
-                    self.logger.info(f"Retrying query transaction risk task for {transaction_id} (attempt {attempt + 1}/{max_retries + 1}) after {delay:.1f}s delay...")
                     time.sleep(delay)
                     delay *= 2
                 
@@ -561,9 +525,6 @@ class RiskService(SingletonService):
                     params=params,
                     timeout=30
                 )
-                
-                self.logger.info(f"Query API response status: {response.status_code}")
-                self.logger.info(f"Query API response content: {response.text}")
                 
                 if response.status_code == 429:
                     last_exception = requests.exceptions.HTTPError(f"Rate limit (429) on attempt {attempt + 1}")
@@ -589,23 +550,17 @@ class RiskService(SingletonService):
                     error_msg = result.get('msg', 'Unknown error')
                     # 如果任务还未完成，返回None而不是抛出异常
                     if 'not ready' in error_msg.lower() or 'no result' in error_msg.lower():
-                        self.logger.info(f"Task not ready yet: {error_msg}")
                         return None
                     raise LPException(self.logger, "RiskService._query_transaction_risk_task", f"API returned error: {error_msg}")
                 
                 data = result.get('data', {})
                 # 检查任务是否已完成：如果数据中包含 score 字段，说明结果已经准备好
                 if 'score' in data:
-                    self.logger.info(f"Task result ready, score: {data.get('score')}")
                     return data
                 
-                # 如果没有 score 字段，检查 has_result 字段
                 if data.get('has_result', False):
-                    self.logger.info(f"Task result ready (has_result=True)")
                     return data
                 
-                # 结果还未准备好
-                self.logger.info(f"Task result not ready, has_result: {data.get('has_result', False)}, has_score: {'score' in data}")
                 return None
                 
             except requests.exceptions.Timeout as e:

@@ -58,7 +58,6 @@ class WalletService(SingletonService):
             try:
                 # 如果不是第一次尝试，等待后重试
                 if attempt > 0:
-                    self.logger.info(f"Retrying TRC20 balance query (attempt {attempt + 1}/{max_retries + 1}) after {delay:.1f}s delay...")
                     time.sleep(delay)
                     delay *= 2  # 指数退避：每次重试延迟翻倍
                 
@@ -71,7 +70,6 @@ class WalletService(SingletonService):
                 # result是一个整数（最小单位），直接返回最小单位，不进行转换
                 balance_decimal = Decimal(str(result))
                 
-                self.logger.info(f"USDT balance from tronpy (min unit): {balance_decimal}")
                 return balance_decimal
                     
             except HTTPError as e:
@@ -178,7 +176,6 @@ class WalletService(SingletonService):
             try:
                 # 如果不是第一次尝试，等待后重试
                 if attempt > 0:
-                    self.logger.info(f"Retrying wallet audit query for {wallet_address} (attempt {attempt + 1}/{max_retries + 1}) after {delay:.1f}s delay...")
                     time.sleep(delay)
                     delay *= 2  # 指数退避：每次重试延迟翻倍
                 
@@ -196,12 +193,10 @@ class WalletService(SingletonService):
                 response.raise_for_status()
                 
                 data = response.json()
-                self.logger.info(f"wallet data: {data}")
                 
                 data_list = data.get('data', [])
                 if data_list and len(data_list) > 0:
                     wallet_data = data_list[0]
-                    self.logger.info(f"wallet_data: {wallet_data}")
                     
                     # 获取TRX余额（单位是sun，直接返回最小单位sun，不进行转换）
                     balance_sun = wallet_data.get('balance', 0)
@@ -210,7 +205,6 @@ class WalletService(SingletonService):
                     # 尝试从trc20字段获取代币信息
                     tokens = wallet_data.get('trc20', [])
                     if tokens:
-                        self.logger.info(f"Found trc20 tokens in account data: {tokens}")
                         for token in tokens:
                             for token_address, balance in token.items():
                                 if balance != '0':
@@ -252,11 +246,8 @@ class WalletService(SingletonService):
         
         # 2. 如果data为空或没有找到USDT余额，通过合约调用查询USDT余额
         if balance_info['usdt_balance'] == Decimal('0'):
-            self.logger.info("Data is empty or USDT balance is 0, trying to query via contract call...")
             usdt_balance = self._query_trc20_balance(wallet_address, usdt_contract_address)
             if usdt_balance is not None:
                 balance_info['usdt_balance'] = usdt_balance
-                self.logger.info(f"USDT balance from contract call: {usdt_balance}")
         
-        self.logger.info(f"balance_info: {balance_info}")
         return balance_info

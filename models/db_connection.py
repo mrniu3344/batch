@@ -298,7 +298,6 @@ class DBConnection:
 
             cur = self.conn.cursor()
             count = cur.execute(sql, values)
-            self.logger.info("{} パラメータ:{} 削除した件数：{}".format(table, keys, count))
             self.logger.debug(cur.query.decode('utf-8') if hasattr(cur, 'query') and cur.query else sql)
             cur.close()
         except Exception as e:
@@ -313,7 +312,6 @@ class DBConnection:
                 if holdConnection == False:
                     self.conn.close()
                     self.conn = None
-                self.logger.info("committed")
             else:
                 raise Exception("already closed")
         except Exception as e:
@@ -326,7 +324,6 @@ class DBConnection:
                 if holdConnection == False:
                     self.conn.close()
                     self.conn = None
-                self.logger.info("rollbacked")
             else:
                 raise Exception("already closed")
         except Exception as e:

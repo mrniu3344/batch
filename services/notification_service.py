@@ -33,7 +33,6 @@ class NotificationService(SingletonService):
         try:
             response = requests.post(self.slack_webhook_url, headers=headers, json=payload, timeout=10)
             response.raise_for_status()
-            self.logger.info(f"Sent Slack notification successfully. status={response.status_code}")
         except requests.exceptions.Timeout:
             self.logger.error("Slack notification timed out.")
         except requests.exceptions.HTTPError as exc:
