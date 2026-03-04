@@ -92,9 +92,10 @@ class UserService(SingletonService):
         conn.update("users", keys, json, user, process)
 
     def update_audited_info(self, conn: DBConnection, uid, audited_usdt, audited_trx, user: int, process: str):
+        """更新 audited_usdt/audited_trx，使用 is_master=True 避免更新 update_at，否则余额刷新会使所有用户被 get_audit_users 误判为 1 小时内有动作"""
         keys = {"id": uid}
         json_data = {"audited_usdt": audited_usdt, "audited_trx": audited_trx}
-        conn.update("users", keys, json_data, user, process)
+        conn.update("users", keys, json_data, user, process, is_master=True)
 
     def update_risk_info(self, conn: DBConnection, uid: int, score: int, risk_level: str, user: int, process: str, 
                          hacking_event: str = None, detail_list: list = None, risk_detail: list = None):
