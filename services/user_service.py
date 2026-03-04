@@ -65,6 +65,12 @@ class UserService(SingletonService):
         datas = conn.select(sql)
         return [User(data) for data in datas]
 
+    def get_refresh_users(self, conn: DBConnection) -> list[User]:
+        """取得 wallet is not null 的所有用户（用于余额更新）"""
+        sql = """select * from users where wallet is not null"""
+        datas = conn.select(sql)
+        return [User(data) for data in datas]
+
     def get_users(self, conn: DBConnection) -> list[User]:
         sql = "select * from users"
         datas = conn.select(sql)

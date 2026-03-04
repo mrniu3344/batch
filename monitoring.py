@@ -650,7 +650,7 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
         for wallet_name, wallet_addr in main_wallets:
             try:
                 risk_result = risk_service.assess_wallet_risk(wallet_addr)
-                
+
                 if risk_result:
                     risk_level = risk_result.get('risk_level', 'Unknown')
                     # 如果风险级别是 High 或 Severe，发送 Slack 通知
@@ -663,6 +663,33 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
                 logger.error(f"Unexpected error checking main wallet {wallet_name} risk: {e}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
+
+        # 余额更新：对所有有钱包的用户更新 audited_usdt/audited_trx（与风险评估分离，风险评估仅针对1小时内有动作的用户）
+        user_service = UserService(logger)
+        refresh_users = user_service.get_refresh_users(conn)
+        if refresh_users:
+            logger.info(f"开始更新 {len(refresh_users)} 个钱包的余额")
+            for user in refresh_users:
+                refresh_conn = None
+                try:
+                    refresh_conn = db_service.get_connection()
+                    update_balance(logger, user, refresh_conn, wallet_service, user_service)
+                    refresh_conn.commit()
+                except LPException as e:
+                    e.print()
+                    logger.error(f"用户 {user.id} 钱包 {user.wallet} 余额更新失败: {e.error_function}, {e.error_detail}")
+                    if refresh_conn:
+                        refresh_conn.rollback()
+                except Exception as e:
+                    logger.error(f"用户 {user.id} 钱包 {user.wallet} 余额更新失败: {type(e).__name__}: {str(e)}")
+                    if refresh_conn:
+                        refresh_conn.rollback()
+                finally:
+                    if refresh_conn:
+                        try:
+                            refresh_conn.commit(holdConnection=False)
+                        except Exception:
+                            pass
 
         conn.commit()
     except LPException as exc:
@@ -699,7 +726,6 @@ def audit(logger, mode):
         mode: 运行模式 (dev/stg/prd)
     """
     logger.info("===== audit start =====")
-    wallet_service = WalletService(logger)
     risk_service = RiskService(logger)
     notification_service = NotificationService(logger, slack_webhook_url=constants.slack_webhook_url["fengxian"])
     
@@ -730,7 +756,7 @@ def audit(logger, mode):
             user_service = UserService(logger)
             
             # 处理单个用户的审计
-            _audit_single_user(logger, user, user_conn, wallet_service, user_service, risk_service, notification_service)
+            _audit_single_user(logger, user, user_conn, user_service, risk_service, notification_service)
             
             # 立即提交当前用户的事务
             user_conn.commit()
@@ -798,28 +824,38 @@ SELECT sum(audited_usdt)/1000000 as total_usdt FROM sub_users where id<>345"""
     logger.info(f"成功: {success_count} 个用户, 失败: {error_count} 个用户")
 
 
-def _audit_single_user(logger, user, conn, wallet_service, user_service, risk_service, notification_service):
+def update_balance(logger, user, conn, wallet_service, user_service):
     """
-    处理单个用户的审计操作
-    
+    更新用户钱包的 audited_usdt 和 audited_trx
+
     Args:
         logger: 日志记录器
         user: 用户对象
-        conn: 数据库连接（用于当前用户的事务）
+        conn: 数据库连接
         wallet_service: 钱包服务
         user_service: 用户服务
-        risk_service: 风险服务
-        notification_service: 通知服务
     """
     balance_info = wallet_service.audit_wallet(user.wallet)
-    
     if balance_info:
         audited_usdt = balance_info['usdt_balance']
         audited_trx = balance_info['trx_balance']
         user_service.update_audited_info(conn, user.id, audited_usdt, audited_trx, 0, "batch.daily_wallet_audit")
     else:
         logger.warning(f"用户 {user.id} 的钱包 {user.wallet} 审计失败，跳过更新")
-    
+
+
+def _audit_single_user(logger, user, conn, user_service, risk_service, notification_service):
+    """
+    处理单个用户的风险评估（余额更新由 update_balance 单独处理）
+
+    Args:
+        logger: 日志记录器
+        user: 用户对象
+        conn: 数据库连接（用于当前用户的事务）
+        user_service: 用户服务
+        risk_service: 风险服务
+        notification_service: 通知服务
+    """
     # 风险评估
     try:
         risk_result = risk_service.assess_wallet_risk(user.wallet)
