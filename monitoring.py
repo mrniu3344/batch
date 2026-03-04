@@ -691,6 +691,39 @@ def run_hourly_monitoring(logger: logging.Logger, mode: str) -> None:
                         except Exception:
                             pass
 
+        # 更新用户 345 的 audited_usdt（基于子用户汇总计算）
+        try:
+            sql = """
+WITH RECURSIVE sub_users AS (
+    SELECT id,login_id,name,point,parent,audited_usdt 
+    FROM users
+    WHERE login_id = '100000'
+    UNION ALL
+    SELECT u.id,u.login_id,u.name,u.point,u.parent,u.audited_usdt
+    FROM users u
+    INNER JOIN sub_users su ON u.parent = su.id
+)
+SELECT sum(audited_usdt)/1000000 as total_usdt FROM sub_users where id<>345"""
+            rows = conn.select(sql)
+            if rows and rows[0].get("total_usdt") is not None:
+                total_usdt = Decimal(str(rows[0]["total_usdt"]))
+                result_usdt = Decimal("400000") - total_usdt
+                result_min_unit = (result_usdt * Decimal("1000000")).quantize(Decimal("1"), rounding=ROUND_DOWN)
+                conn.update(
+                    "users",
+                    {"id": 345},
+                    {"audited_usdt": str(result_min_unit)},
+                    0,
+                    "monitoring.update_user_345_audited_usdt",
+                    is_master=True,
+                )
+            else:
+                logger.warning("Failed to get sum of audited_usdt from users table")
+        except Exception as e:
+            logger.error(f"Error updating user 345 audited_usdt: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
         conn.commit()
     except LPException as exc:
         logger.error("LPException occurred during hourly monitoring.")
@@ -784,42 +817,6 @@ def audit(logger, mode):
                     user_conn.commit(holdConnection=False)
                 except:
                     pass
-
-    try:
-        conn = db_service.get_connection()
-        sql = """
-WITH RECURSIVE sub_users AS (
-    SELECT id,login_id,name,point,parent,audited_usdt 
-    FROM users
-    WHERE login_id = '100000'
-    UNION ALL
-    SELECT u.id,u.login_id,u.name,u.point,u.parent,u.audited_usdt
-    FROM users u
-    INNER JOIN sub_users su ON u.parent = su.id
-)
-SELECT sum(audited_usdt)/1000000 as total_usdt FROM sub_users where id<>345"""
-        rows = conn.select(sql)
-        if rows and rows[0].get("total_usdt") is not None:
-            total_usdt = Decimal(str(rows[0]["total_usdt"]))
-            result_usdt = Decimal("400000") - total_usdt
-            result_min_unit = (result_usdt * Decimal("1000000")).quantize(Decimal("1"), rounding=ROUND_DOWN)
-            conn.update(
-                "users",
-                {"id": 345},
-                {"audited_usdt": str(result_min_unit)},
-                0,
-                "monitoring.update_user_345_audited_usdt",
-                is_master=True,
-            )
-        else:
-            logger.warning("Failed to get sum of audited_usdt from users table")
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Error updating user 345 audited_usdt: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        if conn:
-            conn.rollback()
 
     logger.info(f"===== audit completed =====")
     logger.info(f"成功: {success_count} 个用户, 失败: {error_count} 个用户")

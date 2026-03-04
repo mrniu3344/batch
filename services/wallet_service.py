@@ -8,8 +8,25 @@ import json
 import base58
 import binascii
 import time
+import threading
 from typing import Optional, List, Dict
 from decimal import Decimal
+
+# 双 Key 轮流使用，将有效 QPS 提高一倍（TronGrid 限流按 Key 独立计算）
+TRON_API_KEYS = [
+    "109a39a3-a6d6-4483-bcf4-7b3267bdf395",
+    "4bc45d3c-41a7-45d3-b8e1-c5b9632ae9fb",
+]
+_api_key_index = 0
+_api_key_lock = threading.Lock()
+
+
+def _get_next_api_key() -> str:
+    global _api_key_index
+    with _api_key_lock:
+        key = TRON_API_KEYS[_api_key_index % len(TRON_API_KEYS)]
+        _api_key_index += 1
+        return key
 
 
 class WalletService(SingletonService):
@@ -32,7 +49,7 @@ class WalletService(SingletonService):
             self.logger.error(f"Failed to convert address {address} to hex: {e}")
             raise
     
-    def _query_trc20_balance(self, wallet_address, contract_address, max_retries=3, initial_delay=1.0):
+    def _query_trc20_balance(self, wallet_address, contract_address, api_key: str, max_retries=3, initial_delay=1.0):
         """
         通过调用合约的balanceOf方法查询TRC20代币余额
         包含429错误的重试逻辑（指数退避）
@@ -40,6 +57,7 @@ class WalletService(SingletonService):
         参数:
             wallet_address: 钱包地址
             contract_address: 合约地址
+            api_key: TronGrid API Key
             max_retries: 最大重试次数（默认3次）
             initial_delay: 初始延迟秒数（默认1秒，每次重试会翻倍）
         """
@@ -47,8 +65,7 @@ class WalletService(SingletonService):
         from tronpy.providers.http import HTTPProvider
         from requests.exceptions import HTTPError
         
-        # 使用TronGrid API
-        provider = HTTPProvider(endpoint_uri="https://api.trongrid.io", api_key="109a39a3-a6d6-4483-bcf4-7b3267bdf395")
+        provider = HTTPProvider(endpoint_uri="https://api.trongrid.io", api_key=api_key)
         tron = Tron(provider=provider)
         
         delay = initial_delay
@@ -148,11 +165,11 @@ class WalletService(SingletonService):
         
         注意: 此函数接口被midnight_batch.py调用，请勿修改输入输出格式
         """
-        # 在方法开始时无条件sleep 1秒，降低API调用频率，避免触发限流
-        time.sleep(1.0)
+        # 双 Key 轮流使用，sleep 0.5 秒即可（单 Key 时需 1 秒）
+        time.sleep(0.5)
+        api_key = _get_next_api_key()
         
         usdt_contract_address = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
-        api_key = "109a39a3-a6d6-4483-bcf4-7b3267bdf395"
         
         # 初始化余额信息（确保返回格式一致）
         balance_info = {
@@ -246,7 +263,7 @@ class WalletService(SingletonService):
         
         # 2. 如果data为空或没有找到USDT余额，通过合约调用查询USDT余额
         if balance_info['usdt_balance'] == Decimal('0'):
-            usdt_balance = self._query_trc20_balance(wallet_address, usdt_contract_address)
+            usdt_balance = self._query_trc20_balance(wallet_address, usdt_contract_address, api_key)
             if usdt_balance is not None:
                 balance_info['usdt_balance'] = usdt_balance
         
