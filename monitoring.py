@@ -709,6 +709,7 @@ def schedule_monitoring(logger: logging.Logger, mode: str) -> None:
     schedule.every(1).minutes.do(run_monitoring, logger, mode)
     logger.info("Scheduled monitoring job every 1 minute.")
     
+    run_hourly_monitoring(logger, mode)
     schedule.every(1).hours.do(run_hourly_monitoring, logger, mode)
     logger.info("Scheduled hourly monitoring job every 1 hour.")
 
