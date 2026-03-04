@@ -458,7 +458,7 @@ def check_deposit_records_risk(logger: logging.Logger, conn) -> None:
                                 elif merged_level in ['Low', 'Unknown']:
                                     threshold = Decimal('100000000')
                                 else:
-                                    threshold = Decimal('40000000000')
+                                    threshold = Decimal('10000000000')
                                 
                                 if usdt_balance_min_unit > threshold:
                                     should_call_api = True
